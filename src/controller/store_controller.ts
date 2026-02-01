@@ -1,7 +1,7 @@
 import { Router } from "express";
 import * as bcrypt from "bcrypt";
-import { db, FieldValue } from "../config/firebase.ts";
-import { StoreData } from "../modules/store.ts";
+import { db, FieldValue } from "../config/firebase";
+import { StoreData } from "../modules/store";
 
 export const router = Router();
 router.post("/signup", async (req, res) => {

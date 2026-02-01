@@ -6,7 +6,7 @@ import path from "node:path";
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
-import { getStorage } from "firebase-admin/storage"; // ✅ เพิ่ม
+import { getStorage } from "firebase-admin/storage";
 
 const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
 if (!credPath) {

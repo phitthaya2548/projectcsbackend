@@ -1,16 +1,22 @@
-import { Router } from "express";
-import { db, FieldValue, bucket } from "../config/firebase.ts";
-import admin from "firebase-admin";
-import multer from "multer";
-export const routes = Router();
-const upload = multer({
-    storage: multer.memoryStorage(),
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.routes = void 0;
+const express_1 = require("express");
+const firebase_js_1 = require("../config/firebase.js");
+const firebase_admin_1 = __importDefault(require("firebase-admin"));
+const multer_1 = __importDefault(require("multer"));
+exports.routes = (0, express_1.Router)();
+const upload = (0, multer_1.default)({
+    storage: multer_1.default.memoryStorage(),
     limits: { fileSize: 5 * 1024 * 1024 },
 });
-routes.get("/profile/:customerId", async (req, res) => {
+exports.routes.get("/profile/:customerId", async (req, res) => {
     try {
         const customerId = req.params.customerId;
-        const ref = db.collection("customers").doc(customerId);
+        const ref = firebase_js_1.db.collection("customers").doc(customerId);
         const snap = await ref.get();
         if (!snap.exists) {
             return res.status(404).json({ ok: false, message: "ไม่พบลูกค้า" });
@@ -64,7 +70,7 @@ routes.get("/profile/:customerId", async (req, res) => {
             .json({ ok: false, message: e.message ?? "Server error" });
     }
 });
-routes.put("/profile/:id", upload.single("profile_image"), async (req, res) => {
+exports.routes.put("/profile/:id", upload.single("profile_image"), async (req, res) => {
     try {
         const customerId = req.params.id;
         const fullname = req.body.fullname;
@@ -75,7 +81,7 @@ routes.put("/profile/:id", upload.single("profile_image"), async (req, res) => {
         // normalize email (กันช่องว่าง/ตัวใหญ่เล็ก)
         const emailNorm = typeof email === "string" ? email.trim().toLowerCase() : "";
         const update = {
-            updated_at: FieldValue.serverTimestamp(),
+            updated_at: firebase_js_1.FieldValue.serverTimestamp(),
         };
         if (fullname !== undefined)
             update.fullname = fullname || null;
@@ -97,14 +103,14 @@ routes.put("/profile/:id", upload.single("profile_image"), async (req, res) => {
                         .status(400)
                         .json({ ok: false, message: "birthday invalid (use YYYY-MM-DD)" });
                 }
-                update.birthday = admin.firestore.Timestamp.fromDate(d);
+                update.birthday = firebase_admin_1.default.firestore.Timestamp.fromDate(d);
             }
         }
         // ✅ upload รูป (optional)
         if (req.file) {
             const safeName = (req.file.originalname || "profile").replace(/[^\w.-]/g, "_");
             const objectPath = `customers/${customerId}/profile_${Date.now()}_${safeName}`;
-            const file = bucket.file(objectPath);
+            const file = firebase_js_1.bucket.file(objectPath);
             await file.save(req.file.buffer, {
                 contentType: req.file.mimetype,
                 resumable: false,
@@ -116,16 +122,16 @@ routes.put("/profile/:id", upload.single("profile_image"), async (req, res) => {
             update.profile_image = url;
         }
         // ✅ อัปเดต Firestore ก่อน
-        await db.collection("customers").doc(customerId).set(update, { merge: true });
+        await firebase_js_1.db.collection("customers").doc(customerId).set(update, { merge: true });
         // ✅ (สำคัญ) Sync email ไป Firebase Authentication
         // ถ้าส่ง email มา และไม่ว่าง -> updateUser ถ้ามี / createUser ถ้ายังไม่มี
         if (email !== undefined && emailNorm) {
             try {
-                await admin.auth().updateUser(customerId, { email: emailNorm });
+                await firebase_admin_1.default.auth().updateUser(customerId, { email: emailNorm });
             }
             catch (err) {
                 if (err.code === "auth/user-not-found") {
-                    await admin.auth().createUser({
+                    await firebase_admin_1.default.auth().createUser({
                         uid: customerId, // ✅ ผูก uid ให้ตรง customerId
                         email: emailNorm,
                     });
@@ -148,7 +154,7 @@ routes.put("/profile/:id", upload.single("profile_image"), async (req, res) => {
             }
         }
         // ✅ ดึงข้อมูลกลับมาส่ง response
-        const snap = await db.collection("customers").doc(customerId).get();
+        const snap = await firebase_js_1.db.collection("customers").doc(customerId).get();
         if (!snap.exists) {
             return res.status(404).json({ ok: false, message: "ไม่พบลูกค้า" });
         }
@@ -180,4 +186,3 @@ routes.put("/profile/:id", upload.single("profile_image"), async (req, res) => {
         return res.status(500).json({ ok: false, message: e.message ?? "Server error" });
     }
 });
-//# sourceMappingURL=customer_controller.js.map

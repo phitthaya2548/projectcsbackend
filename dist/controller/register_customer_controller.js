@@ -1,8 +1,44 @@
-import { Router } from "express";
-import { db, auth, FieldValue } from "../config/firebase.ts";
-import * as bcrypt from "bcrypt";
-export const routes = Router();
-routes.post("/signup", async (req, res) => {
+"use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.routes = void 0;
+const express_1 = require("express");
+const firebase_1 = require("../config/firebase");
+const bcrypt = __importStar(require("bcrypt"));
+exports.routes = (0, express_1.Router)();
+exports.routes.post("/signup", async (req, res) => {
     try {
         const { username, password } = req.body;
         if (!username || !password) {
@@ -10,7 +46,7 @@ routes.post("/signup", async (req, res) => {
         }
         const u = username.trim();
         // 1) เช็คซ้ำ
-        const dup = await db
+        const dup = await firebase_1.db
             .collection("customers")
             .where("username", "==", u)
             .limit(1)
@@ -21,7 +57,7 @@ routes.post("/signup", async (req, res) => {
         // 2) hash password
         const hashed = await bcrypt.hash(password, 12);
         // 3) สร้าง doc ใหม่
-        const docRef = db.collection("customers").doc();
+        const docRef = firebase_1.db.collection("customers").doc();
         const payload = {
             customer_id: docRef.id,
             username: u,
@@ -34,8 +70,8 @@ routes.post("/signup", async (req, res) => {
             birthday: '',
             gender: '',
             google_id: '',
-            created_at: FieldValue.serverTimestamp(),
-            updated_at: FieldValue.serverTimestamp(),
+            created_at: firebase_1.FieldValue.serverTimestamp(),
+            updated_at: firebase_1.FieldValue.serverTimestamp(),
         };
         await docRef.set(payload);
         return res.json({ ok: true, customer_id: docRef.id });
@@ -45,24 +81,24 @@ routes.post("/signup", async (req, res) => {
         return res.status(400).json({ ok: false, message: e.message ?? "Signup failed" });
     }
 });
-routes.post("/google", async (req, res) => {
+exports.routes.post("/google", async (req, res) => {
     try {
         const { google_id } = req.body;
         if (!google_id) {
             return res.status(400).json({ ok: false, message: "idToken required" });
         }
         // 1) verify token
-        const decoded = await auth.verifyIdToken(google_id);
+        const decoded = await firebase_1.auth.verifyIdToken(google_id);
         const uid = decoded.uid;
         const email = decoded.email;
         // 2) ดึงชื่อ/รูปจาก Firebase Auth
-        const user = await auth.getUser(uid);
+        const user = await firebase_1.auth.getUser(uid);
         const displayName = user.displayName ?? null;
         const photoUrl = user.photoURL ?? null;
         if (!email)
             throw new Error("ไม่พบอีเมลจาก Google");
         // 3) หา customer ด้วย email
-        const q = await db.collection("customers").where("email", "==", email).limit(1).get();
+        const q = await firebase_1.db.collection("customers").where("email", "==", email).limit(1).get();
         // ====== เจอ email แล้ว ======
         if (!q.empty) {
             const doc = q.docs[0];
@@ -73,7 +109,7 @@ routes.post("/google", async (req, res) => {
                 await doc.ref.update({
                     fullname: displayName ?? data["fullname"] ?? null,
                     profile_image: photoUrl ?? data["profile_image"] ?? null,
-                    updated_at: FieldValue.serverTimestamp(),
+                    updated_at: firebase_1.FieldValue.serverTimestamp(),
                 });
                 const latest = await doc.ref.get();
                 return res.json({
@@ -96,7 +132,7 @@ routes.post("/google", async (req, res) => {
             });
         }
         // ====== ไม่เจอ email -> สมัครใหม่ ======
-        const docRef = db.collection("customers").doc();
+        const docRef = firebase_1.db.collection("customers").doc();
         const payload = {
             customer_id: docRef.id,
             username: '',
@@ -109,8 +145,8 @@ routes.post("/google", async (req, res) => {
             birthday: '',
             gender: '',
             google_id: uid,
-            created_at: FieldValue.serverTimestamp(),
-            updated_at: FieldValue.serverTimestamp(),
+            created_at: firebase_1.FieldValue.serverTimestamp(),
+            updated_at: firebase_1.FieldValue.serverTimestamp(),
         };
         await docRef.set(payload);
         const created = await docRef.get();
@@ -128,4 +164,3 @@ routes.post("/google", async (req, res) => {
         return res.status(400).json({ ok: false, message: e.message ?? "Google auth failed" });
     }
 });
-//# sourceMappingURL=register_customer_controller.js.map

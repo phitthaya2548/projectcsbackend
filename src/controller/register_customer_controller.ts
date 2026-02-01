@@ -1,7 +1,7 @@
 import { Router } from "express";
 import admin from "firebase-admin";
-import { db, auth, FieldValue } from "../config/firebase.ts";
-import { CustomerData } from "../modules/customer.ts";
+import { db, auth, FieldValue } from "../config/firebase";
+import { CustomerData } from "../modules/customer";
 import * as bcrypt from "bcrypt";
 export const routes = Router();
 
