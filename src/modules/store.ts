@@ -1,25 +1,30 @@
-import type { FieldValue } from "firebase-admin/firestore";
 
-export type StoreStatus = "OPEN" |  "TEMP_CLOSED";
+export type StoreStatus = "เปิดร้าน" |  "ปิดชั่วคราว";
 export type StoreData = {
   store_id: string;
   username: string;
   password: string;
-  shop_name: string | null;
-  phone: string | null;
-  email: string | null;
-  facebook_id: string | null;
-  line_id: string | null;
-  address: string | null;
-  opening_hours: string | null;
-  closed_hours: string | null;
+
+  store_name: string;
+  phone: string;
+  email: string;
+
+  facebook: string;
+  line_id: string;
+
+  address: string;
+
+  opening_hours: string;
+  closed_hours: string;
+
   status: StoreStatus;
-  is_profile_completed: boolean;
-  service_radius: number | null;
-  latitude: number | null;
-  longitude: number | null;
-  profile_image: string | null;
+
+  service_radius: number; // 0 = ยังไม่ตั้ง
+  latitude: number;       // 0 = ยังไม่ตั้ง
+  longitude: number;
+
+  profile_image: string;
+
   wallet_balance: number;
-  created_at: FieldValue;
-  updated_at: FieldValue;
+
 };

@@ -10,6 +10,5 @@ export type CustomerData = {
   birthday: any | null;
   gender: string | null;
   google_id: string | null;
-  created_at: any;
-  updated_at: any;
+
 };
