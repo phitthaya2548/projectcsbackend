@@ -20,7 +20,7 @@ function checkCustomerProfile(data: any) {
 }
 function checkStoreProfile(data: any) {
   return checkProfile(data, [
-    "shop_name",
+    "store_name",
     "phone",
     "opening_hours",
     "closed_hours",
@@ -120,6 +120,11 @@ router.post("/login", async (req, res) => {
         ok: true,
         role: "store",
         store_id: data.store_id,
+        store_name: data.store_name ?? "",
+        username: data.username ?? "",
+        email: data.email ?? "",
+        phone: data.phone ?? "",
+        profile_image: data.profile_image ?? null,
         profile_complete: storeStatus.profile_complete,
         missing_fields: storeStatus.missing_fields,
       });
