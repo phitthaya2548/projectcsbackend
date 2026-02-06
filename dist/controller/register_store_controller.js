@@ -35,74 +35,78 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.router = void 0;
 const express_1 = require("express");
-const firebase_1 = require("../config/firebase");
 const bcrypt = __importStar(require("bcrypt"));
+const firebase_1 = require("../config/firebase");
 exports.router = (0, express_1.Router)();
 exports.router.post("/signup", async (req, res) => {
     try {
         const { username, password } = req.body;
         if (!username || !password) {
+            return res
+                .status(400)
+                .json({ ok: false, message: "username/password required" });
+        }
+        if (password.length < 6) {
             return res.status(400).json({
                 ok: false,
-                message: "username/password required"
+                message: "รหัสผ่านต้องอย่างน้อย 6 ตัว"
             });
         }
         const u = username.trim();
-        if (!u) {
+        const storeCheck = await firebase_1.db
+            .collection("stores")
+            .where("username", "==", u)
+            .limit(1)
+            .get();
+        if (!storeCheck.empty) {
             return res.status(400).json({
                 ok: false,
-                message: "username invalid"
+                message: "Username นี้ถูกใช้แล้ว"
+            });
+        }
+        const checkCustomer = await firebase_1.db
+            .collection("customers")
+            .where("username", "==", u)
+            .limit(1)
+            .get();
+        if (!checkCustomer.empty) {
+            return res.status(400).json({
+                ok: false,
+                message: "Username นี้ถูกใช้แล้ว"
             });
         }
         const hashed = await bcrypt.hash(password, 12);
-        const docRef = firebase_1.db.collection("customers").doc();
-        await firebase_1.db.runTransaction(async (tx) => {
-            // ✅ เช็ค customers
-            const custQ = firebase_1.db
-                .collection("customers")
-                .where("username", "==", u)
-                .limit(1);
-            const custSnap = await tx.get(custQ);
-            if (!custSnap.empty) {
-                throw new Error("Username นี้ถูกใช้แล้ว");
-            }
-            // ✅ เช็ค stores
-            const storeQ = firebase_1.db
-                .collection("stores")
-                .where("username", "==", u)
-                .limit(1);
-            const storeSnap = await tx.get(storeQ);
-            if (!storeSnap.empty) {
-                throw new Error("Username นี้ถูกใช้แล้ว");
-            }
-            // ✅ สร้าง user
-            const payload = {
-                customer_id: docRef.id,
-                username: u,
-                email: "",
-                password: hashed,
-                fullname: "",
-                profile_image: "",
-                wallet_balance: 0.0,
-                phone: "",
-                birthday: "",
-                gender: "",
-                google_id: "",
-            };
-            tx.set(docRef, payload);
-        });
+        const docRef = firebase_1.db.collection("stores").doc();
+        const payload = {
+            store_id: docRef.id,
+            username: u,
+            password: hashed,
+            store_name: '',
+            phone: '',
+            email: '',
+            facebook: '',
+            line_id: '',
+            address: '',
+            opening_hours: '',
+            closed_hours: '',
+            status: "ปิดชั่วคราว",
+            service_radius: 0,
+            latitude: 0,
+            longitude: 0,
+            profile_image: '',
+            wallet_balance: 0.0,
+        };
+        await docRef.set(payload);
         return res.json({
             ok: true,
-            customer_id: docRef.id
+            store_id: docRef.id
         });
     }
     catch (e) {
-        const msg = e?.message ?? "Signup failed";
-        const status = msg.includes("ถูกใช้แล้ว") ? 400 : 500;
-        console.error("SIGNUP ERROR:", e);
-        return res.status(status).json({
+        console.error("STORE SIGNUP ERROR:", e);
+        return res.status(500).json({
             ok: false,
-            message: msg
+            message: e.message ?? "Server error"
         });
     }
 });
