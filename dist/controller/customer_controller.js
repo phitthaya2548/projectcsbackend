@@ -53,10 +53,17 @@ exports.router.put("/profile/:id", upload_js_1.upload.single("profile_image"), a
                 message: "ไม่พบลูกค้า",
             });
         }
+        const currentData = exist.data();
         const { fullname, email, phone, gender, birthday } = req.body;
+        const update = {};
         const emailNorm = typeof email === "string" ? email.trim().toLowerCase() : "";
-        // เช็ค email ซ้ำ
-        if (email !== undefined && emailNorm) {
+        if (currentData.google_id && email !== undefined) {
+            return res.status(400).json({
+                ok: false,
+                message: "บัญชี Google ไม่สามารถแก้ไขอีเมลได้",
+            });
+        }
+        if (!currentData.google_id && email !== undefined && emailNorm) {
             const q = await firebase_js_1.db
                 .collection("customers")
                 .where("email", "==", emailNorm)
@@ -68,20 +75,20 @@ exports.router.put("/profile/:id", upload_js_1.upload.single("profile_image"), a
                     message: "อีเมลนี้ถูกใช้งานในระบบแล้ว",
                 });
             }
+            update.email = emailNorm;
         }
-        if (phone.length < 10 || phone.length > 10) {
-            return res.status(400).json({
-                ok: false,
-                message: "เบอร์โทรต้องมี 10 หลัก",
-            });
+        if (phone !== undefined) {
+            const phoneStr = String(phone);
+            if (!/^\d{10}$/.test(phoneStr)) {
+                return res.status(400).json({
+                    ok: false,
+                    message: "เบอร์โทรต้องมี 10 หลัก",
+                });
+            }
+            update.phone = phoneStr;
         }
-        const update = {};
         if (fullname !== undefined)
             update.fullname = fullname ? String(fullname) : null;
-        if (email !== undefined)
-            update.email = emailNorm ? emailNorm : null;
-        if (phone !== undefined)
-            update.phone = phone ? String(phone) : null;
         if (gender !== undefined)
             update.gender = gender ? String(gender) : null;
         if (birthday !== undefined)
@@ -100,7 +107,6 @@ exports.router.put("/profile/:id", upload_js_1.upload.single("profile_image"), a
             update.profile_image = publicUrl;
         }
         await customerref.set(update, { merge: true });
-        // ✅ ดึงข้อมูลล่าสุด
         const snap = await customerref.get();
         const data = snap.data();
         const birthdayOut = data.birthday?.toDate?.()

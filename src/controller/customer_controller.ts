@@ -45,121 +45,129 @@ router.get("/profile/:customerId", async (req, res) => {
       .json({ ok: false, message: e.message ?? "Server error" });
   }
 });
-router.put("/profile/:id", upload.single("profile_image"), async (req, res) => {
-  try {
-    const customerId = req.params.id as string;
-    const customerref = db.collection("customers").doc(customerId);
+router.put(
+  "/profile/:id",
+  upload.single("profile_image"),
+  async (req, res) => {
+    try {
+      const customerId = req.params.id as string;
+      const customerref = db.collection("customers").doc(customerId);
 
-    const exist = await customerref.get();
-    if (!exist.exists) {
-      return res.status(404).json({
-        ok: false,
-        message: "ไม่พบลูกค้า",
-      });
-    }
-
-    const { fullname, email, phone, gender, birthday } = req.body;
-
-    const emailNorm =
-      typeof email === "string" ? email.trim().toLowerCase() : "";
-
-    // เช็ค email ซ้ำ
-    if (email !== undefined && emailNorm) {
-      const q = await db
-        .collection("customers")
-        .where("email", "==", emailNorm)
-        .limit(1)
-        .get();
-
-      if (!q.empty && q.docs[0].id !== customerId) {
-        return res.status(409).json({
+      const exist = await customerref.get();
+      if (!exist.exists) {
+        return res.status(404).json({
           ok: false,
-          message: "อีเมลนี้ถูกใช้งานในระบบแล้ว",
+          message: "ไม่พบลูกค้า",
         });
       }
-    }
-    if(phone.length < 10 || phone.length > 10){
-      return res.status(400).json({
+
+      const currentData = exist.data() as CustomerData;
+
+      const { fullname, email, phone, gender, birthday } = req.body;
+
+      const update: Partial<CustomerData> = {};
+      const emailNorm =
+        typeof email === "string" ? email.trim().toLowerCase() : "";
+      if (currentData.google_id && email !== undefined) {
+        return res.status(400).json({
+          ok: false,
+          message: "บัญชี Google ไม่สามารถแก้ไขอีเมลได้",
+        });
+      }
+      if (!currentData.google_id && email !== undefined && emailNorm) {
+        const q = await db
+          .collection("customers")
+          .where("email", "==", emailNorm)
+          .limit(1)
+          .get();
+
+        if (!q.empty && q.docs[0].id !== customerId) {
+          return res.status(409).json({
+            ok: false,
+            message: "อีเมลนี้ถูกใช้งานในระบบแล้ว",
+          });
+        }
+
+        update.email = emailNorm;
+      }
+
+      if (phone !== undefined) {
+        const phoneStr = String(phone);
+
+        if (!/^\d{10}$/.test(phoneStr)) {
+          return res.status(400).json({
+            ok: false,
+            message: "เบอร์โทรต้องมี 10 หลัก",
+          });
+        }
+
+        update.phone = phoneStr;
+      }
+
+      if (fullname !== undefined)
+        update.fullname = fullname ? String(fullname) : null;
+
+      if (gender !== undefined)
+        update.gender = gender ? String(gender) : null;
+
+      if (birthday !== undefined)
+        update.birthday = birthday ? birthday : null;
+
+      if (req.file) {
+        const safeName = (req.file.originalname || "profile")
+          .replace(/[^\w.-]/g, "_");
+
+        const objectPath = `customers/${customerId}/profile_${Date.now()}_${safeName}`;
+        const file = bucket.file(objectPath);
+
+        await file.save(req.file.buffer, {
+          contentType: req.file.mimetype,
+          resumable: false,
+        });
+
+        await file.makePublic();
+
+        const publicUrl = `https://storage.googleapis.com/${bucket.name}/${file.name}`;
+
+        update.profile_image = publicUrl;
+      }
+
+      await customerref.set(update, { merge: true });
+
+      const snap = await customerref.get();
+      const data = snap.data() as CustomerData;
+
+      const birthdayOut =
+        data.birthday?.toDate?.()
+          ? data.birthday.toDate().toISOString().slice(0, 10)
+          : data.birthday ?? null;
+
+      return res.json({
+        ok: true,
+        customer_id: customerId,
+        data: {
+          customer_id: data.customer_id ?? customerId,
+          username: data.username ?? "",
+          fullname: data.fullname ?? "",
+          email: data.email ?? "",
+          phone: data.phone ?? "",
+          gender: data.gender ?? "",
+          birthday: birthdayOut,
+          profile_image: data.profile_image ?? "",
+          wallet_balance: data.wallet_balance ?? 0,
+          google_id: data.google_id ?? "",
+        },
+      });
+    } catch (e: any) {
+      console.error("PROFILE UPDATE ERROR:", e);
+
+      return res.status(500).json({
         ok: false,
-        message: "เบอร์โทรต้องมี 10 หลัก",
+        message: e.message ?? "Server error",
       });
     }
-
-    
-    const update: Partial<CustomerData> = {};
-
-    if (fullname !== undefined)
-      update.fullname = fullname ? String(fullname) : null;
-
-    if (email !== undefined)
-      update.email = emailNorm ? emailNorm : null;
-
-    if (phone !== undefined)
-      update.phone = phone ? String(phone) : null;
-
-    if (gender !== undefined)
-      update.gender = gender ? String(gender) : null;
-
-    if (birthday !== undefined)
-      update.birthday = birthday ? birthday : null;
-
-    
-    if (req.file) {
-  const safeName = (req.file.originalname || "profile")
-    .replace(/[^\w.-]/g, "_");
-
-  const objectPath = `customers/${customerId}/profile_${Date.now()}_${safeName}`;
-  const file = bucket.file(objectPath);
-
-  await file.save(req.file.buffer, {
-    contentType: req.file.mimetype,
-    resumable: false,
-  });
-
-  await file.makePublic();
-
-  const publicUrl = `https://storage.googleapis.com/${bucket.name}/${file.name}`;
-
-  update.profile_image = publicUrl;
-}
-
-    await customerref.set(update, { merge: true });
-
-    // ✅ ดึงข้อมูลล่าสุด
-    const snap = await customerref.get();
-    const data = snap.data() as CustomerData;
-
-    const birthdayOut =
-      data.birthday?.toDate?.()
-        ? data.birthday.toDate().toISOString().slice(0, 10)
-        : data.birthday ?? null;
-
-    return res.json({
-      ok: true,
-      customer_id: customerId,
-      data: {
-        customer_id: data.customer_id ?? customerId,
-        username: data.username ?? "",
-        fullname: data.fullname ?? "",
-        email: data.email ?? "",
-        phone: data.phone ?? "",
-        gender: data.gender ?? "",
-        birthday: birthdayOut,
-        profile_image: data.profile_image ?? "",
-        wallet_balance: data.wallet_balance ?? 0,
-        google_id: data.google_id ?? "",
-      },
-    });
-  } catch (e: any) {
-    console.error("PROFILE UPDATE ERROR:", e);
-
-    return res.status(500).json({
-      ok: false,
-      message: e.message ?? "Server error",
-    });
   }
-});
-
+);
 
 router.post("/:id/link-google", async (req, res) => {
   try {
