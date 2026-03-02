@@ -144,32 +144,11 @@ if (emailChecks.some(s => !s.empty)) {
     });
   }
 });
-function calcDistance(
-  lat1: number,
-  lng1: number,
-  lat2: number,
-  lng2: number
-) {
-  const R = 6371;
-  const toRad = Math.PI / 180;
 
-  const latDiff = (lat2 - lat1) * toRad;
-  const lngDiff =
-    (lng2 - lng1) *
-    toRad *
-    Math.cos(((lat1 + lat2) / 2) * toRad);
-
-  return Math.sqrt(latDiff * latDiff + lngDiff * lngDiff) * R;
-}
 
 router.get("/:id", async (req, res) => {
   try {
     const rider_id = req.params.id;
-
-
-    const latrider = parseFloat(req.query.lat as string);
-    const lngrider = parseFloat(req.query.lng as string);
-    const hasClientLocation = !isNaN(latrider) && !isNaN(lngrider);
 
     const ridersRef = await db.collection("riders").doc(rider_id).get();
 
@@ -181,21 +160,10 @@ router.get("/:id", async (req, res) => {
     }
 
     const data = ridersRef.data();
-    const riderLat = data?.latitude ?? null;
-    const riderLng = data?.longitude ?? null;
-
-
-    const distance =
-      hasClientLocation && riderLat !== null && riderLng !== null
-        ? parseFloat(calcDistance(latrider, lngrider, riderLat, riderLng).toFixed(2))
-        : null;
 
     return res.json({
       ok: true,
-      data: {
-        ...data,
-        distance_km: distance,
-      },
+      data,
     });
 
   } catch (e: any) {
@@ -205,7 +173,6 @@ router.get("/:id", async (req, res) => {
     });
   }
 });
-
 router.get("/store/:id", async (req, res) => {
   try {
     const store_id = req.params.id;

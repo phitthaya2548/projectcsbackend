@@ -1,10 +1,9 @@
-import { DocumentReference} 
-from "firebase-admin/firestore";
+import { DocumentReference } from "firebase-admin/firestore";
 
 export const MACHINE_STATUS = [
-  "ใช้งาน",
-  "กำลังทำงาน",
-  "ปิดปรับปรุง",
+  "available",
+  "busy",
+  "maintenance",
 ] as const;
 
 export type MachineStatus =
@@ -14,8 +13,6 @@ export type MachineType =
   "washer" | "dryer";
 
 export interface Machine {
-  id?: string;
-
   machine_id: string;
   name: string;
 
@@ -27,7 +24,5 @@ export interface Machine {
 
   status: MachineStatus;
 
-  // 🔥 เปลี่ยนเป็น reference
   store_id: DocumentReference;
-
 }

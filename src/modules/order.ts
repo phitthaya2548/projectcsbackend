@@ -12,14 +12,15 @@ export type OrderStatus =
   | "delivering"
   | "completed"
   | "cancelled";
+
 export type ServiceType =
   | "wash"
   | "dry"
-  | "wash_dry"
+  | "wash_dry";
 
-  ;
-
-export type DETERGENT_OPTIONS = "no_detergent" | "detergent";
+export type DETERGENT_OPTIONS =
+  | "no_detergent"
+  | "detergent";
 
 export interface Order {
   order_id: string;
@@ -34,8 +35,10 @@ export interface Order {
   staff_id: FirebaseFirestore.DocumentReference | null;
 
   service_type: ServiceType;
-  wash_dry_weigh: number;
-  total_amount: number;
+  wash_dry_weight: number | null;
+
+  service_price: number;
+  delivery_price: number;
 
   detergent_option: DETERGENT_OPTIONS | null;
 
@@ -46,5 +49,5 @@ export interface Order {
 
   status: OrderStatus;
 
-  order_datetime: Timestamp,
+  order_datetime: Timestamp;
 }

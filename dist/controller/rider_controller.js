@@ -113,21 +113,9 @@ exports.router.post("/register", upload_1.upload.single("profile_image"), async 
         });
     }
 });
-function calcDistance(lat1, lng1, lat2, lng2) {
-    const R = 6371;
-    const toRad = Math.PI / 180;
-    const latDiff = (lat2 - lat1) * toRad;
-    const lngDiff = (lng2 - lng1) *
-        toRad *
-        Math.cos(((lat1 + lat2) / 2) * toRad);
-    return Math.sqrt(latDiff * latDiff + lngDiff * lngDiff) * R;
-}
 exports.router.get("/:id", async (req, res) => {
     try {
         const rider_id = req.params.id;
-        const latrider = parseFloat(req.query.lat);
-        const lngrider = parseFloat(req.query.lng);
-        const hasClientLocation = !isNaN(latrider) && !isNaN(lngrider);
         const ridersRef = await firebase_1.db.collection("riders").doc(rider_id).get();
         if (!ridersRef.exists) {
             return res.status(404).json({
@@ -136,17 +124,9 @@ exports.router.get("/:id", async (req, res) => {
             });
         }
         const data = ridersRef.data();
-        const riderLat = data?.latitude ?? null;
-        const riderLng = data?.longitude ?? null;
-        const distance = hasClientLocation && riderLat !== null && riderLng !== null
-            ? parseFloat(calcDistance(latrider, lngrider, riderLat, riderLng).toFixed(2))
-            : null;
         return res.json({
             ok: true,
-            data: {
-                ...data,
-                distance_km: distance,
-            },
+            data,
         });
     }
     catch (e) {

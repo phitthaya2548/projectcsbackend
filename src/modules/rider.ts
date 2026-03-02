@@ -5,7 +5,7 @@ export type Rider = {
   email: string;
   username: string;
   password: string;
-  full_name: string;
+  fullname: string | null;
   phone: string;
   vehicle_type: string;
   license_plate: string;
