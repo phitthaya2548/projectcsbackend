@@ -44,7 +44,7 @@ exports.router.post("/signup", async (req, res) => {
         if (!username || !password) {
             return res
                 .status(400)
-                .json({ ok: false, message: "username/password required" });
+                .json({ ok: false, message: "กรุณาป้อนข้อมูลให้ครบ" });
         }
         if (password.length < 6) {
             return res.status(400).json({
@@ -53,32 +53,23 @@ exports.router.post("/signup", async (req, res) => {
             });
         }
         const u = username.trim();
-        const storeCheck = await firebase_1.db
-            .collection("stores")
-            .where("username", "==", u)
-            .limit(1)
-            .get();
-        if (!storeCheck.empty) {
-            return res.status(400).json({
-                ok: false,
-                message: "Username นี้ถูกใช้แล้ว"
-            });
-        }
-        const checkCustomer = await firebase_1.db
-            .collection("customers")
-            .where("username", "==", u)
-            .limit(1)
-            .get();
-        if (!checkCustomer.empty) {
-            return res.status(400).json({
+        // เช็ค username 
+        const usernameChecks = await Promise.all([
+            firebase_1.db.collection("stores").where("username", "==", u).limit(1).get(),
+            firebase_1.db.collection("customers").where("username", "==", u).limit(1).get(),
+            firebase_1.db.collection("riders").where("username", "==", u).limit(1).get(),
+            firebase_1.db.collection("laundry_staff").where("username", "==", u).limit(1).get(),
+        ]);
+        if (usernameChecks.some(check => !check.empty)) {
+            return res.status(409).json({
                 ok: false,
                 message: "Username นี้ถูกใช้แล้ว"
             });
         }
         const hashed = await bcrypt.hash(password, 12);
-        const docRef = firebase_1.db.collection("stores").doc();
+        const storeRef = firebase_1.db.collection("stores").doc();
         const payload = {
-            store_id: docRef.id,
+            store_id: storeRef.id,
             username: u,
             password: hashed,
             store_name: '',
@@ -87,6 +78,8 @@ exports.router.post("/signup", async (req, res) => {
             facebook: '',
             line_id: '',
             address: '',
+            delivery_max: 0,
+            delivery_min: 0,
             opening_hours: '',
             closed_hours: '',
             status: "ปิดชั่วคราว",
@@ -96,17 +89,16 @@ exports.router.post("/signup", async (req, res) => {
             profile_image: '',
             wallet_balance: 0.0,
         };
-        await docRef.set(payload);
+        await storeRef.set(payload);
         return res.json({
             ok: true,
-            store_id: docRef.id
+            store_id: storeRef.id
         });
     }
     catch (e) {
-        console.error("STORE SIGNUP ERROR:", e);
         return res.status(500).json({
             ok: false,
-            message: e.message ?? "Server error"
+            message: "Server error"
         });
     }
 });

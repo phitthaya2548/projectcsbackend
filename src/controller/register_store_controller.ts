@@ -14,53 +14,39 @@ router.post("/signup", async (req, res) => {
     if (!username || !password) {
       return res
         .status(400)
-        .json({ ok: false, message: "username/password required" });
+        .json({ ok: false, message: "กรุณาป้อนข้อมูลให้ครบ" });
     }
 
     if (password.length < 6) {
       return res.status(400).json({
-        ok:false,
-        message:"รหัสผ่านต้องอย่างน้อย 6 ตัว"
+        ok: false,
+        message: "รหัสผ่านต้องอย่างน้อย 6 ตัว"
       });
     }
 
     const u = username.trim();
 
-    
-    const storeCheck = await db
-      .collection("stores")
-      .where("username", "==", u)
-      .limit(1)
-      .get();
+    // เช็ค username 
+    const usernameChecks = await Promise.all([
+      db.collection("stores").where("username", "==", u).limit(1).get(),
+      db.collection("customers").where("username", "==", u).limit(1).get(),
+      db.collection("riders").where("username", "==", u).limit(1).get(),
+      db.collection("laundry_staff").where("username", "==", u).limit(1).get(),
+    ]);
 
-    if (!storeCheck.empty) {
-      return res.status(400).json({
-        ok:false,
-        message:"Username นี้ถูกใช้แล้ว"
+    if (usernameChecks.some(check => !check.empty)) {
+      return res.status(409).json({
+        ok: false,
+        message: "Username นี้ถูกใช้แล้ว"
       });
     }
-
-
-    const checkCustomer = await db
-      .collection("customers")
-      .where("username","==",u)
-      .limit(1)
-      .get();
-
-    if (!checkCustomer.empty) {
-      return res.status(400).json({
-        ok:false,
-        message:"Username นี้ถูกใช้แล้ว"
-      });
-    }
-
 
     const hashed = await bcrypt.hash(password, 12);
 
-    const docRef = db.collection("stores").doc();
+    const storeRef = db.collection("stores").doc();
 
     const payload: StoreData = {
-      store_id: docRef.id,
+      store_id: storeRef.id,
       username: u,
       password: hashed,
       store_name: '',
@@ -69,6 +55,8 @@ router.post("/signup", async (req, res) => {
       facebook: '',
       line_id: '',
       address: '',
+      delivery_max:0,
+      delivery_min:0,
       opening_hours: '',
       closed_hours: '',
       status: "ปิดชั่วคราว",
@@ -79,19 +67,17 @@ router.post("/signup", async (req, res) => {
       wallet_balance: 0.0,
     };
 
-    await docRef.set(payload);
+    await storeRef.set(payload);
 
     return res.json({
-      ok:true,
-      store_id: docRef.id
+      ok: true,
+      store_id: storeRef.id
     });
 
-  } catch (e:any) {
-    console.error("STORE SIGNUP ERROR:", e);
+  } catch (e) {
     return res.status(500).json({
-      ok:false,
-      message:e.message ?? "Server error"
+      ok: false,
+      message: "Server error"
     });
   }
 });
-

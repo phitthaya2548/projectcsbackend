@@ -19,12 +19,13 @@ export type StoreData = {
 
   status: StoreStatus;
 
-  service_radius: number; // 0 = ยังไม่ตั้ง
-  latitude: number;       // 0 = ยังไม่ตั้ง
+  service_radius: number;
+  latitude: number;
   longitude: number;
 
   profile_image: string;
-
+  delivery_min: number;
+delivery_max: number;
   wallet_balance: number;
 
 };

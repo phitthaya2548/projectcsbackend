@@ -1,19 +1,19 @@
 import { Router } from "express";
 
-import { db, FieldValue ,bucket} from "../config/firebase.js";
+import { db, bucket} from "../config/firebase.js";
 import admin from "firebase-admin";
-import multer from "multer";
+
+import { CustomerAddress } from "../modules/address_customer.js";
+import { CustomerData } from "../modules/customer.js";
+import { upload } from "../middlewares/upload.js";
 export const router = Router();
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 },
-});
+
 router.get("/profile/:customerId", async (req, res) => {
   try {
     const customerId = req.params.customerId;
 
-    const ref = db.collection("customers").doc(customerId);
-    const snap = await ref.get();
+    const customerref = db.collection("customers").doc(customerId);
+    const snap = await customerref.get();
 
     if (!snap.exists) {
       return res.status(404).json({ ok: false, message: "ไม่พบลูกค้า" });
@@ -48,22 +48,22 @@ router.get("/profile/:customerId", async (req, res) => {
 router.put("/profile/:id", upload.single("profile_image"), async (req, res) => {
   try {
     const customerId = req.params.id as string;
+    const customerref = db.collection("customers").doc(customerId);
 
-    const ref = db.collection("customers").doc(customerId);
-    const exist = await ref.get();
+    const exist = await customerref.get();
     if (!exist.exists) {
-      return res.status(404).json({ ok: false, message: "ไม่พบลูกค้า" });
+      return res.status(404).json({
+        ok: false,
+        message: "ไม่พบลูกค้า",
+      });
     }
 
-    const fullname = req.body.fullname;
-    const email = req.body.email;
-    const phone = req.body.phone;
-    const gender = req.body.gender;
-    const birthday = req.body.birthday;
+    const { fullname, email, phone, gender, birthday } = req.body;
 
-    const emailNorm = typeof email === "string" ? email.trim().toLowerCase() : "";
+    const emailNorm =
+      typeof email === "string" ? email.trim().toLowerCase() : "";
 
-
+    // เช็ค email ซ้ำ
     if (email !== undefined && emailNorm) {
       const q = await db
         .collection("customers")
@@ -72,49 +72,67 @@ router.put("/profile/:id", upload.single("profile_image"), async (req, res) => {
         .get();
 
       if (!q.empty && q.docs[0].id !== customerId) {
-        return res.status(409).json({ ok: false, message: "อีเมลนี้ถูกใช้งานในระบบแล้ว" });
+        return res.status(409).json({
+          ok: false,
+          message: "อีเมลนี้ถูกใช้งานในระบบแล้ว",
+        });
       }
     }
-
-    // ✅ สำคัญ: ต้องเป็น object
-    const update: Record<string, any> = {};
-
-    if (fullname !== undefined) update.fullname = fullname ? String(fullname) : null;
-
-    // ✅ email: ถ้าส่งมาแต่เป็นค่าว่าง -> set null
-    if (email !== undefined) update.email = emailNorm ? emailNorm : null;
-
-    if (phone !== undefined) update.phone = phone ? String(phone) : null;
-    if (gender !== undefined) update.gender = gender ? String(gender) : null;
-    if (birthday !== undefined) update.birthday = birthday ? String(birthday) : null;
-
-    if (req.file) {
-      const safeName = (req.file.originalname || "profile").replace(/[^\w.-]/g, "_");
-      const objectPath = `customers/${customerId}/profile_${Date.now()}_${safeName}`;
-      const file = bucket.file(objectPath);
-
-      await file.save(req.file.buffer, {
-        contentType: req.file.mimetype,
-        resumable: false,
+    if(phone.length < 10 || phone.length > 10){
+      return res.status(400).json({
+        ok: false,
+        message: "เบอร์โทรต้องมี 10 หลัก",
       });
-
-      const [url] = await file.getSignedUrl({
-        action: "read",
-        expires: "2491-01-01",
-      });
-
-      update.profile_image = url;
     }
 
-    update.updated_at = admin.firestore.FieldValue.serverTimestamp();
+    
+    const update: Partial<CustomerData> = {};
+
+    if (fullname !== undefined)
+      update.fullname = fullname ? String(fullname) : null;
+
+    if (email !== undefined)
+      update.email = emailNorm ? emailNorm : null;
+
+    if (phone !== undefined)
+      update.phone = phone ? String(phone) : null;
+
+    if (gender !== undefined)
+      update.gender = gender ? String(gender) : null;
+
+    if (birthday !== undefined)
+      update.birthday = birthday ? birthday : null;
 
     
-    await ref.set(update, { merge: true });
+    if (req.file) {
+  const safeName = (req.file.originalname || "profile")
+    .replace(/[^\w.-]/g, "_");
 
-    const snap = await ref.get();
-    const data = snap.data() as any;
+  const objectPath = `customers/${customerId}/profile_${Date.now()}_${safeName}`;
+  const file = bucket.file(objectPath);
 
-    const birthdayOut = data.birthday?.toDate ? data.birthday.toDate().toISOString().slice(0, 10) : null;
+  await file.save(req.file.buffer, {
+    contentType: req.file.mimetype,
+    resumable: false,
+  });
+
+  await file.makePublic();
+
+  const publicUrl = `https://storage.googleapis.com/${bucket.name}/${file.name}`;
+
+  update.profile_image = publicUrl;
+}
+
+    await customerref.set(update, { merge: true });
+
+    // ✅ ดึงข้อมูลล่าสุด
+    const snap = await customerref.get();
+    const data = snap.data() as CustomerData;
+
+    const birthdayOut =
+      data.birthday?.toDate?.()
+        ? data.birthday.toDate().toISOString().slice(0, 10)
+        : data.birthday ?? null;
 
     return res.json({
       ok: true,
@@ -128,15 +146,20 @@ router.put("/profile/:id", upload.single("profile_image"), async (req, res) => {
         gender: data.gender ?? "",
         birthday: birthdayOut,
         profile_image: data.profile_image ?? "",
-        wallet_balance: Number(data.wallet_balance ?? 0),
+        wallet_balance: data.wallet_balance ?? 0,
         google_id: data.google_id ?? "",
       },
     });
   } catch (e: any) {
     console.error("PROFILE UPDATE ERROR:", e);
-    return res.status(500).json({ ok: false, message: e.message ?? "Server error" });
+
+    return res.status(500).json({
+      ok: false,
+      message: e.message ?? "Server error",
+    });
   }
 });
+
 
 router.post("/:id/link-google", async (req, res) => {
   try {
@@ -144,65 +167,134 @@ router.post("/:id/link-google", async (req, res) => {
     const { idToken } = req.body as { idToken?: string };
 
     if (!idToken) {
-      return res.status(400).json({ ok: false, message: "idToken required" });
+      return res.status(400).json({
+        ok: false,
+        message: "idToken required",
+      });
     }
-
-    // 1) verify google token
     const decoded = await admin.auth().verifyIdToken(idToken);
+
     const googleUid = decoded.uid;
     const email = decoded.email ?? null;
 
-    // 2) กัน googleUid ถูกผูกกับ customer คนอื่นอยู่แล้ว
-    const dup = await db
+    if (!email) {
+      return res.status(400).json({
+        ok: false,
+        message: "ไม่พบอีเมลจาก Google",
+      });
+    }
+    const checkgoogle_id = await db
       .collection("customers")
       .where("google_id", "==", googleUid)
       .limit(1)
       .get();
 
-    if (!dup.empty && dup.docs[0].id !== customerId) {
+    if (!checkgoogle_id.empty && checkgoogle_id.docs[0].id !== customerId) {
       return res.status(409).json({
         ok: false,
         message: "Google account นี้ถูกผูกกับบัญชีอื่นแล้ว",
       });
     }
 
-    // 3) อัปเดต customer เดิมให้มี google_id
+    const customerRef = db.collection("customers").doc(customerId);
+    const customerSnap = await customerRef.get();
+
+    if (!customerSnap.exists) {
+      return res.status(404).json({
+        ok: false,
+        message: "ไม่พบบัญชีลูกค้า",
+      });
+    }
+
+    const customerData = customerSnap.data() as Partial<CustomerData>;
+
+    const googleEmail = email.trim().toLowerCase();
+    const dbEmail = customerData?.email?.trim().toLowerCase();
+
+    if (dbEmail && googleEmail !== dbEmail) {
+      return res.status(400).json({
+        ok: false,
+        message: "อีเมล Google ต้องตรงกับอีเมลที่สมัครไว้",
+      });
+    }
     const user = await admin.auth().getUser(googleUid);
+
     const displayName = user.displayName ?? null;
     const photoUrl = user.photoURL ?? null;
 
     const update: Record<string, any> = {
       google_id: googleUid,
-      updated_at: FieldValue.serverTimestamp(),
+      google_linked_at: new Date(),
     };
 
-    // อัปเดต email/profile แบบไม่ทับของเดิมถ้าไม่มีค่า
-    if (email) update.email = email.trim().toLowerCase();
-    if (displayName) update.fullname = displayName;
-    if (photoUrl) update.profile_image = photoUrl;
+    if (!dbEmail && googleEmail) {
+      update.email = googleEmail;
+    }
 
-    await db.collection("customers").doc(customerId).set(update, { merge: true });
 
-    const snap = await db.collection("customers").doc(customerId).get();
-    return res.json({ ok: true, linked: true, docId: snap.id, ...snap.data() });
+    if (displayName && (!customerData.fullname || customerData.fullname.trim() === '')) {
+      update.fullname = displayName;
+    }
+
+    // อัปเดตรูปถ้ายังไม่มีหรือเป็นค่าว่าง
+    if (photoUrl && (!customerData.profile_image || customerData.profile_image.trim() === '')) {
+      update.profile_image = photoUrl;
+    }
+
+    await customerRef.set(update, { merge: true });
+
+    
+    const snap = await customerRef.get();
+    const data = snap.data() as CustomerData;
+
+    
+    const birthdayOut =
+      data.birthday?.toDate?.()
+        ? data.birthday.toDate().toISOString().slice(0, 10)
+        : data.birthday ?? null;
+
+    return res.json({
+      ok: true,
+      message: "เชื่อม Google สำเร็จ",
+      linked: true,
+      data: {
+        customer_id: data.customer_id ?? customerId,
+        username: data.username ?? "",
+        fullname: data.fullname ?? "",
+        email: data.email ?? "",
+        phone: data.phone ?? "",
+        gender: data.gender ?? "",
+        birthday: birthdayOut,
+        profile_image: data.profile_image ?? "",
+        wallet_balance: data.wallet_balance ?? 0,
+        google_id: data.google_id ?? "",
+      },
+    });
+
   } catch (e: any) {
     console.error("LINK GOOGLE ERROR:", e);
-    return res.status(400).json({ ok: false, message: e.message ?? "link google failed" });
+    return res.status(400).json({
+      ok: false,
+      message: e.message ?? "link google failed",
+    });
   }
 });
+
 router.post("/addresses/:id", async (req, res) => {
   try {
-    const customerId = req.params.id;
+    const customerId = String(req.params.id).trim();
 
-    const checkcustomer =
-      db.collection("customers").doc(customerId);
+    
+    const customerRef = db
+      .collection("customers")
+      .doc(customerId);
 
-    const cSnap = await checkcustomer.get();
+    const customerSnap = await customerRef.get();
 
-    if (!cSnap.exists) {
+    if (!customerSnap.exists) {
       return res.status(404).json({
-        ok:false,
-        message:"ไม่พบลูกค้า"
+        ok: false,
+        message: "ไม่พบลูกค้า",
       });
     }
 
@@ -211,212 +303,387 @@ router.post("/addresses/:id", async (req, res) => {
       address_text,
       latitude,
       longitude,
-      status
+      status,
     } = req.body;
 
-    if (!address_name || !String(address_name).trim()) {
+    if (!address_name?.trim()) {
       return res.status(400).json({
-        ok:false,
-        message:"address_name required"
+        ok: false,
+        message: "address_name required",
       });
     }
 
-    if (!address_text || !String(address_text).trim()) {
+    if (!address_text?.trim()) {
       return res.status(400).json({
-        ok:false,
-        message:"address_text required"
+        ok: false,
+        message: "address_text required",
       });
     }
 
-    const lat = latitude === undefined ? null : Number(latitude);
-    const lng = longitude === undefined ? null : Number(longitude);
+    const lat = Number(latitude);
+    const lng = Number(longitude);
 
-    if (lat !== null && Number.isNaN(lat)) {
-      return res.status(400).json({ ok:false, message:"latitude invalid"});
+    if (Number.isNaN(lat)) {
+      return res.status(400).json({
+        ok: false,
+        message: "latitude invalid",
+      });
     }
 
-    if (lng !== null && Number.isNaN(lng)) {
-      return res.status(400).json({ ok:false, message:"longitude invalid"});
-    }
-
-    // 🔥 logic ใหม่
-    let st = true;
-
-    if (status !== undefined) {
-      st = status === true || status === "true";
+    if (Number.isNaN(lng)) {
+      return res.status(400).json({
+        ok: false,
+        message: "longitude invalid",
+      });
     }
 
     
-    if (st === true) {
-      const snap = await db
+    if (status === true) {
+      const customersnap = await db
         .collection("customer_addresses")
-        .where("customer_id","==",customerId)
-        .where("status","==",true)
+        .where("customer_id", "==", customerRef) 
+        .where("status", "==", true)
         .get();
 
       const batch = db.batch();
-
-      snap.docs.forEach(d=>{
-        batch.update(d.ref,{status:false});
-      });
-
+      customersnap.docs.forEach(d =>
+        batch.update(d.ref, { status: false })
+      );
       await batch.commit();
     }
 
-    const ref =
-      db.collection("customer_addresses").doc();
+    const ref = db.collection("customer_addresses").doc();
 
-    await ref.set({
-      address_id: ref.id,
-      customer_id: customerId,
-      address_name: String(address_name).trim(),
-      address_text: String(address_text).trim(),
+    const dataaddress: CustomerAddress = {
+      customer_id: customerRef,
+      address_name: address_name.trim(),
+      address_text: address_text.trim(),
       latitude: lat,
       longitude: lng,
-      status: st,
-      created_at: admin.firestore.FieldValue.serverTimestamp()
-    });
+      status: status === true,
+    };
+
+    await ref.set(dataaddress);
 
     return res.status(201).json({
-      ok:true,
-      address_id:ref.id
+      ok: true,
+      address_id: ref.id,
     });
 
-  } catch(e:any){
-    console.error(e);
-
-    return res.status(500).json({
-      ok:false,
-      message:e.message
+  } catch (e) {
+    res.status(500).json({
+      ok: false,
+      message: "server error",
     });
   }
 });
 
 
 
-router.get("/addresses/:id", async (req,res)=>{
+router.get("/addresses/active/:id", async (req, res) => {
   try {
+    const customerId = req.params.id;
 
-    const customerId = String(req.params.id).trim();
+    const customerRef = db
+      .collection("customers")
+      .doc(customerId);
 
-    if(!customerId){
-      return res.status(400).json({
-        ok:false,
-        message:"customer_id required"
+    const snap = await db
+      .collection("customer_addresses")
+      .where("customer_id", "==", customerRef)
+      .where("status", "==", true)
+      .limit(1)
+      .get();
+
+    if (snap.empty) {
+      return res.json({
+        ok: true,
+        data: null,
       });
     }
 
-    const address = await db
+    const doc = snap.docs[0];
+    const data = doc.data() as CustomerAddress;
+
+    res.json({
+      ok: true,
+      data: {
+        address_id: doc.id,
+        customer_id: data.customer_id.id,
+        address_name: data.address_name,
+        address_text: data.address_text,
+        latitude: data.latitude,
+        longitude: data.longitude,
+        status: data.status,
+      },
+    });
+
+  } catch (e) {
+    res.status(500).json({
+      ok: false,
+      message: "server error",
+    });
+  }
+});
+
+
+router.get("/addresses/:id", async (req, res) => {
+  try {
+    const customerId = req.params.id;
+
+    const customerRef = db
+      .collection("customers")
+      .doc(customerId);
+
+    const snap = await db
       .collection("customer_addresses")
-      .where("customer_id","==",customerId)
-      .orderBy("status","asc")
+      .where("customer_id", "==", customerRef)
+      .orderBy("status", "desc")
       .get();
 
-    const data = address.docs.map(d=>{
-      const doc = d.data();
+    const data = snap.docs.map(doc => {
+      const d = doc.data() as CustomerAddress;
+
       return {
-        address_id: d.id,
-        customer_id: doc.customer_id ?? "",
-        address_name: doc.address_name ?? "",
-        address_text: doc.address_text ?? "",
-        latitude: doc.latitude ?? 0,
-        longitude: doc.longitude ?? 0,
-        status: doc.status ?? false,
+        address_id: doc.id,
+        customer_id: d.customer_id.id,
+        address_name: d.address_name,
+        address_text: d.address_text,
+        latitude: d.latitude,
+        longitude: d.longitude,
+        status: d.status,
       };
     });
 
-    return res.json({
-      ok:true,
-      count:data.length,
-      data
+    res.json({
+      ok: true,
+      count: data.length,
+      data,
     });
 
-  } catch(e:any){
-    console.error("GET ADDRESS ERROR:",e);
-    return res.status(500).json({
-      ok:false,
-      message:"server error"
+  } catch (e) {
+    res.status(500).json({
+      ok: false,
+      message: "server error",
     });
   }
 });
+
+
 router.put("/addresses/update/:id", async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id;
 
-    const {
-      address_name,
-      address_text,
-      latitude,
-      longitude,
-      status
-    } = req.body;
+    const addressRef = db
+      .collection("customer_addresses")
+      .doc(id);
 
-    await db.collection("customer_addresses")
-      .doc(id)
-      .update({
-        address_name,
-        address_text,
-        latitude,
-        longitude,
-        status,
+    const snap = await addressRef.get();
+
+    if (!snap.exists) {
+      return res.status(404).json({
+        ok: false,
+        message: "Address not found",
       });
+    }
 
-    res.json({
-      success: true,
-      message: "Address updated"
-    });
+    const update: Partial<CustomerAddress> = {};
 
-  } catch (err) {
-    console.error(err);
+    
+    if (req.body.customer_id !== undefined) {
+      const customerRef = db
+        .collection("customers")
+        .doc(String(req.body.customer_id));
+
+      const customerSnap = await customerRef.get();
+
+      if (!customerSnap.exists) {
+        return res.status(400).json({
+          ok: false,
+          message: "Customer not found",
+        });
+      }
+
+      update.customer_id = customerRef;
+    }
+
+    if (req.body.address_name !== undefined)
+      update.address_name = String(req.body.address_name).trim();
+
+    if (req.body.address_text !== undefined)
+      update.address_text = String(req.body.address_text).trim();
+
+    if (req.body.latitude !== undefined)
+      update.latitude = Number(req.body.latitude);
+
+    if (req.body.longitude !== undefined)
+      update.longitude = Number(req.body.longitude);
+
+    if (req.body.status !== undefined)
+      update.status = Boolean(req.body.status);
+
+    
+    if (Object.keys(update).length === 0) {
+      return res.status(400).json({
+        ok: false,
+        message: "No data to update",
+      });
+    }
+    if(req.body.address_name !== undefined && !String(req.body.address_name).trim()){
+      return res.status(400).json({
+        ok: false,
+        message: "address_name required",
+      });
+    }
+
+    await addressRef.update(update);
+
+    res.json({ ok: true });
+
+  } catch (e) {
+    console.error(e);
     res.status(500).json({
-      success: false,
-      message: "Server error"
+      ok: false,
+      message: "server error",
     });
   }
 });
 
+router.put("/addresses/status/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
 
-
-router.put("/addresses/status/:id", async (req,res)=>{
-  const id = req.params.id;
-  const ref = db.collection("customer_addresses").doc(id);
-
-  const snap = await ref.get();
-  if(!snap.exists){
-    return res.status(404).json({ok:false});
-  }
-
-  const {status} = req.body;
-
-  // ถ้าตั้ง default ใหม่
-  if(status === true){
-    const custId = snap.data()!.customer_id;
-
-
-    const old = await db
+    const addressRef = db
       .collection("customer_addresses")
-      .where("customer_id","==",custId)
-      .where("status","==",true)
+      .doc(id);
+
+    const snap = await addressRef.get();
+
+    if (!snap.exists) {
+      return res.status(404).json({ ok: false });
+    }
+
+    const data = snap.data() as CustomerAddress;
+
+    // 🔥 เป็น DocumentReference แล้ว
+    const customerRef = data.customer_id;
+
+    const defaultAddress = await db
+      .collection("customer_addresses")
+      .where("customer_id", "==", customerRef)
+      .where("status", "==", true)
       .get();
 
     const batch = db.batch();
-    old.docs.forEach(d=>{
-      batch.update(d.ref,{status:false});
-    });
+
+    // ปิดตัวอื่น
+    defaultAddress.docs.forEach(d =>
+      batch.update(d.ref, { status: false })
+    );
+
+    // เปิดตัวนี้
+    batch.update(addressRef, { status: true });
+
     await batch.commit();
+
+    res.json({ ok: true });
+
+  } catch (e) {
+    res.status(500).json({
+      ok: false,
+      message: "server error",
+    });
   }
+});
+router.delete("/addresses/delete/:id", async (req, res) => {
+  try {
+    const ref = db
+      .collection("customer_addresses")
+      .doc(req.params.id);
 
-  await ref.update(req.body);
+    const snap = await ref.get();
 
-  res.json({ok:true});
+    if (!snap.exists) {
+      return res.status(404).json({
+        ok: false,
+        message: "Address not found",
+      });
+    }
+
+    await ref.delete();
+
+    res.json({ ok: true ,message: "ลบข้อมูลที่อยู่ลูกค้าสำเร็จ"});
+
+  } catch (e) {
+    res.status(500).json({
+      ok: false,
+      message: "server error",
+    });
+  }
 });
 
 
-router.delete("/addresses/delete/:id", async (req,res)=>{
-  await db
-    .collection("customer_addresses")
-    .doc(req.params.id)
-    .delete();
 
-  res.json({ok:true});
+function calcDistance(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number
+) {
+  const R = 6371;
+  const toRad = Math.PI / 180;
+
+  const latDiff = (lat2 - lat1) * toRad;
+  const lngDiff =
+    (lng2 - lng1) *
+    toRad *
+    Math.cos(((lat1 + lat2) / 2) * toRad);
+
+  return Math.sqrt(latDiff * latDiff + lngDiff * lngDiff) * R;
+}
+
+
+router.get("/getstores", async (req, res) => {
+  try {
+    const search = (req.query.search as string || "").trim();
+
+    const customerLat = Number(req.query.lat);
+    const customerLng = Number(req.query.lng);
+
+    const snap = await db.collection("stores").get();
+
+    let data = snap.docs.map(d => {
+      const s = d.data();
+
+      let distance = 0;
+      if (!isNaN(customerLat) && !isNaN(customerLng)) {
+        distance = calcDistance(customerLat, customerLng, s.latitude, s.longitude);
+      }
+
+      return {
+        store_id: d.id,
+        store_name: s.store_name ?? "",
+        profile_image: s.profile_image ?? "",
+        rating: s.rating_avg ?? 0,
+        opening: `${s.opening_hours ?? ""} - ${s.closed_hours ?? ""}`,
+        services: s.services ?? [],
+        distance_km: Number(distance.toFixed(1)),
+        status: s.status ?? "ปิดชั่วคราว",
+      };
+    });
+
+    if (search) {
+      data = data.filter(s =>
+        s.store_name.toLowerCase().includes(search.toLowerCase()) ||
+        s.store_name.includes(search)
+      );
+    }
+
+    data = data.slice(0, 20);
+
+    res.json({ ok: true, data });
+
+  } catch (e) {
+    res.status(500).json({ ok: false, message: "server error" });
+  }
 });
