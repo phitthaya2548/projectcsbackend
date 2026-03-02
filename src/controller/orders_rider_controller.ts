@@ -49,7 +49,7 @@ router.put(
         }
       }
 
-      // ไรเดอร์ส่งผ้าถึงร้านแล้ว พนักงานจะเห็นงานตอนนี้
+     
       if (status === "waiting_wash") {
         if (!rider_id) {
           return res.status(400).json({ ok: false, message: "กรุณาระบุ rider_id" });
@@ -57,7 +57,7 @@ router.put(
         updateData.rider_pickup_id = db.collection("riders").doc(rider_id);
       }
 
-      // ไรเดอร์ส่งผ้ากลับบ้านลูกค้าเสร็จ
+   
       if (status === "completed") {
         if (!rider_id) {
           return res.status(400).json({ ok: false, message: "กรุณาระบุ rider_id" });
@@ -164,7 +164,7 @@ const orderDocs = Array.from(uniqueMap.values());
         const addressData = addressSnap?.exists ? addressSnap.data() : null;
         const customerData = customerSnap?.exists ? customerSnap.data() : null;
 
-        // ── คำนวณระยะทาง ──
+        
         const addrLat = addressData?.latitude ?? null;
         const addrLng = addressData?.longitude ?? null;
         let distance = 0;
@@ -184,9 +184,11 @@ const orderDocs = Array.from(uniqueMap.values());
           after_wash_image: orderData?.after_wash_image ?? null,
           rider_pickup_id: orderData?.rider_pickup_id?.id ?? null,
           rider_delivery_id: orderData?.rider_delivery_id?.id ?? null,
-          order_datetime: orderData?.order_datetime
-            ? { _seconds: orderData.order_datetime.seconds }
-            : null,
+          address_lat: addrLat,
+address_lng: addrLng,
+order_datetime: orderData?.order_datetime
+    ? { _seconds: orderData.order_datetime.seconds }
+    : null,
           address: addressData?.address_text ?? null,
           customer: customerData
             ? {

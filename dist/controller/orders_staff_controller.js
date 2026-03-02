@@ -87,7 +87,6 @@ exports.router.get("/history/:id", async (req, res) => {
         }
         const orders = await Promise.all(ordersSnap.docs.map(async (doc) => {
             const order = doc.data();
-            // ✅ อ่าน store_id จาก order แต่ละตัวแทน
             const orderStoreRef = order.store_id;
             const [storeSnap, addressSnap, customerSnap] = await Promise.all([
                 orderStoreRef ? orderStoreRef.get() : Promise.resolve(null),

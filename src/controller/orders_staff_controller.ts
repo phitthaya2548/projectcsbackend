@@ -109,7 +109,7 @@ router.get("/history/:id", async (req, res) => {
       ordersSnap.docs.map(async (doc) => {
         const order = doc.data() as Order;
 
-        // ✅ อ่าน store_id จาก order แต่ละตัวแทน
+        
         const orderStoreRef = order.store_id as
           | FirebaseFirestore.DocumentReference
           | null;
