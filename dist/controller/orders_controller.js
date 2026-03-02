@@ -1,14 +1,9 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.router = void 0;
 const express_1 = require("express");
 const firebase_1 = require("../config/firebase");
 const firestore_1 = require("firebase-admin/firestore");
-const moment_timezone_1 = __importDefault(require("moment-timezone"));
-const now = (0, moment_timezone_1.default)().tz("Asia/Bangkok");
 exports.router = (0, express_1.Router)();
 const VALID_SERVICE_TYPES = ["wash", "dry", "wash_dry"];
 const VALID_DETERGENT = ["no_detergent", "detergent"];
@@ -150,8 +145,7 @@ exports.router.get("/list/:id", async (req, res) => {
                 rider_id: d.rider_id?.id ?? null,
                 staff_id: d.staff_id?.id ?? null,
                 service_type: d.service_type,
-                wash_dry_weigh: d.wash_dry_weigh,
-                total_amount: d.total_amount,
+                wash_dry_weight: d.wash_dry_weigh,
                 detergent_option: d.detergent_option ?? null,
                 before_wash_image: d.before_wash_image ?? "",
                 after_wash_image: d.after_wash_image ?? "",

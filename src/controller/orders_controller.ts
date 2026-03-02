@@ -3,9 +3,8 @@ import { db, } from "../config/firebase";
 import { DETERGENT_OPTIONS, Order, OrderStatus, ServiceType } from "../modules/order";
 
 import { Timestamp } from "firebase-admin/firestore";
-import moment from "moment-timezone";
 
-const now = moment().tz("Asia/Bangkok");
+
 
 export const router = Router();
 
@@ -195,8 +194,7 @@ router.get("/list/:id", async (req, res) => {
           rider_id:          d.rider_id?.id      ?? null,
           staff_id:          d.staff_id?.id      ?? null,
           service_type:      d.service_type,
-          wash_dry_weigh:    d.wash_dry_weigh,
-          total_amount:      d.total_amount,
+          wash_dry_weight:    d.wash_dry_weigh,
           detergent_option:  d.detergent_option  ?? null,
           before_wash_image: d.before_wash_image ?? "",
           after_wash_image:  d.after_wash_image  ?? "",
