@@ -8,6 +8,7 @@ const express_1 = require("express");
 const firebase_js_1 = require("../config/firebase.js");
 const firebase_admin_1 = __importDefault(require("firebase-admin"));
 const upload_js_1 = require("../middlewares/upload.js");
+const haversine_js_1 = require("../services/haversine.js");
 exports.router = (0, express_1.Router)();
 exports.router.get("/profile/:customerId", async (req, res) => {
     try {
@@ -496,15 +497,6 @@ exports.router.delete("/addresses/delete/:id", async (req, res) => {
         });
     }
 });
-function calcDistance(lat1, lng1, lat2, lng2) {
-    const R = 6371;
-    const toRad = Math.PI / 180;
-    const latDiff = (lat2 - lat1) * toRad;
-    const lngDiff = (lng2 - lng1) *
-        toRad *
-        Math.cos(((lat1 + lat2) / 2) * toRad);
-    return Math.sqrt(latDiff * latDiff + lngDiff * lngDiff) * R;
-}
 exports.router.get("/getstores", async (req, res) => {
     try {
         const search = (req.query.search || "").trim();
@@ -515,7 +507,7 @@ exports.router.get("/getstores", async (req, res) => {
             const s = d.data();
             let distance = 0;
             if (!isNaN(customerLat) && !isNaN(customerLng)) {
-                distance = calcDistance(customerLat, customerLng, s.latitude, s.longitude);
+                distance = haversine_js_1.DistanceService.haversineDistance(customerLat, customerLng, s.latitude, s.longitude);
             }
             return {
                 store_id: d.id,

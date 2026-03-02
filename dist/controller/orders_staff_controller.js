@@ -3,6 +3,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.router = void 0;
 const express_1 = require("express");
 const firebase_1 = require("../config/firebase");
+const haversine_1 = require("../services/haversine");
+const calculateDelivery_1 = require("../services/calculateDelivery");
+console.log(require("../services/calculateDelivery"));
 exports.router = (0, express_1.Router)();
 exports.router.put("/start_wash/:id", async (req, res) => {
     try {
@@ -359,16 +362,6 @@ exports.router.get("/calculate/preview/:id", async (req, res) => {
             return res.status(404).json({ ok: false, message: "ไม่พบที่อยู่ลูกค้า" });
         const addressData = addressSnap.data();
         const storeData = storeSnap.data();
-        function haversineKm(lat1, lng1, lat2, lng2) {
-            const R = 6371;
-            const dLat = (lat2 - lat1) * Math.PI / 180;
-            const dLng = (lng2 - lng1) * Math.PI / 180;
-            const a = Math.sin(dLat / 2) ** 2 +
-                Math.cos(lat1 * Math.PI / 180) *
-                    Math.cos(lat2 * Math.PI / 180) *
-                    Math.sin(dLng / 2) ** 2;
-            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        }
         let delivery_price = 0;
         let distanceKm = 0;
         const storeLat = storeData?.latitude;
@@ -376,16 +369,19 @@ exports.router.get("/calculate/preview/:id", async (req, res) => {
         const cusLat = addressData?.latitude;
         const cusLng = addressData?.longitude;
         if (storeLat && storeLng && cusLat && cusLng) {
-            distanceKm = haversineKm(storeLat, storeLng, cusLat, cusLng);
-            const serviceRadius = (storeData?.service_radius);
-            const deliveryMin = (storeData?.delivery_min);
-            const deliveryMax = (storeData?.delivery_max);
+            const rawDistance = haversine_1.DistanceService.haversineDistance(storeLat, storeLng, cusLat, cusLng);
+            // ✅ ปัดให้เหลือ 1 ตำแหน่งเหมือนที่แสดง
+            const distanceKm = Number(rawDistance.toFixed(1));
+            const serviceRadius = storeData?.service_radius;
+            const deliveryMin = storeData?.delivery_min;
+            const deliveryMax = storeData?.delivery_max;
             if (distanceKm > serviceRadius)
                 return res.status(422).json({
                     ok: false,
                     message: `ที่อยู่ลูกค้าอยู่นอกพื้นที่ให้บริการ (${distanceKm.toFixed(1)} กม. / รัศมี ${serviceRadius} กม.)`,
                 });
-            delivery_price = calculateDeliveryFee(distanceKm, serviceRadius, deliveryMin, deliveryMax);
+            delivery_price = calculateDelivery_1.DeliveryService.calculateDeliveryFee(distanceKm, // 👈 ตอนนี้เป็นค่าที่ปัดแล้ว
+            serviceRadius, deliveryMin, deliveryMax);
         }
         const updateData = {
             delivery_price: delivery_price,
@@ -405,9 +401,3 @@ exports.router.get("/calculate/preview/:id", async (req, res) => {
         return res.status(500).json({ ok: false, message: err.message ?? "server error" });
     }
 });
-function calculateDeliveryFee(distanceKm, serviceRadius, deliveryMin, deliveryMax) {
-    if (distanceKm > serviceRadius)
-        throw new Error("Out of delivery area");
-    const shipping = deliveryMin + (distanceKm / serviceRadius) * (deliveryMax - deliveryMin);
-    return Math.round(Math.min(Math.max(shipping, deliveryMin), deliveryMax));
-}

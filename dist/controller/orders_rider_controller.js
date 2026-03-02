@@ -4,6 +4,7 @@ exports.router = void 0;
 const express_1 = require("express");
 const firebase_1 = require("../config/firebase");
 const upload_1 = require("../middlewares/upload");
+const haversine_1 = require("../services/haversine");
 exports.router = (0, express_1.Router)();
 exports.router.put("/update/status/:id", upload_1.upload.single("image"), async (req, res) => {
     try {
@@ -60,33 +61,6 @@ exports.router.put("/update/status/:id", upload_1.upload.single("image"), async 
         return res.status(500).json({ ok: false, message: "server error" });
     }
 });
-function calcDistanceKm(riderLat, riderLng, addressLat, addressLng) {
-    if (riderLat == null ||
-        riderLng == null ||
-        addressLat == null ||
-        addressLng == null) {
-        return null;
-    }
-    if (Math.abs(riderLat) > 90 ||
-        Math.abs(addressLat) > 90 ||
-        Math.abs(riderLng) > 180 ||
-        Math.abs(addressLng) > 180) {
-        return null;
-    }
-    const toRad = (deg) => (deg * Math.PI) / 180;
-    const R = 6371; // km
-    const lat1 = toRad(riderLat);
-    const lat2 = toRad(addressLat);
-    const dLat = lat2 - lat1;
-    const dLng = toRad(addressLng - riderLng);
-    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos(lat1) *
-            Math.cos(lat2) *
-            Math.sin(dLng / 2) *
-            Math.sin(dLng / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-}
 exports.router.get("/:id", async (req, res) => {
     try {
         const rider_id = req.params.id;
@@ -125,7 +99,7 @@ exports.router.get("/:id", async (req, res) => {
             const addrLng = addressData?.longitude ?? null;
             let distance = 0;
             if (hasRiderLocation && addrLat !== null && addrLng !== null) {
-                distance = calcDistanceKm(riderlat, riderlng, addrLat, addrLng) ?? 0;
+                distance = haversine_1.DistanceService.haversineDistance(riderlat, riderlng, addrLat, addrLng);
             }
             return {
                 id: orderDoc.id,

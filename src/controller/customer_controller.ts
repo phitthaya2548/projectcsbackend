@@ -6,6 +6,7 @@ import admin from "firebase-admin";
 import { CustomerAddress } from "../modules/address_customer.js";
 import { CustomerData } from "../modules/customer.js";
 import { upload } from "../middlewares/upload.js";
+import { DistanceService } from "../services/haversine.js";
 export const router = Router();
 
 router.get("/profile/:customerId", async (req, res) => {
@@ -632,23 +633,6 @@ router.delete("/addresses/delete/:id", async (req, res) => {
 
 
 
-function calcDistance(
-  lat1: number,
-  lng1: number,
-  lat2: number,
-  lng2: number
-) {
-  const R = 6371;
-  const toRad = Math.PI / 180;
-
-  const latDiff = (lat2 - lat1) * toRad;
-  const lngDiff =
-    (lng2 - lng1) *
-    toRad *
-    Math.cos(((lat1 + lat2) / 2) * toRad);
-
-  return Math.sqrt(latDiff * latDiff + lngDiff * lngDiff) * R;
-}
 
 
 router.get("/getstores", async (req, res) => {
@@ -665,7 +649,7 @@ router.get("/getstores", async (req, res) => {
 
       let distance = 0;
       if (!isNaN(customerLat) && !isNaN(customerLng)) {
-        distance = calcDistance(customerLat, customerLng, s.latitude, s.longitude);
+        distance = DistanceService.haversineDistance(customerLat, customerLng, s.latitude, s.longitude);
       }
 
       return {

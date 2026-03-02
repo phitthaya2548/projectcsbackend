@@ -6,6 +6,10 @@ import { CustomerAddress } from "../modules/address_customer";
 import { Machine } from "../modules/machine";
 import { Order, OrderStatus } from "../modules/order";
 
+import { DistanceService } from "../services/haversine";
+import { DeliveryService } from "../services/calculateDelivery";
+
+console.log(require("../services/calculateDelivery"));
 export const router = Router();
 router.put("/start_wash/:id", async (req, res) => {
   try {
@@ -109,7 +113,7 @@ router.get("/history/:id", async (req, res) => {
       ordersSnap.docs.map(async (doc) => {
         const order = doc.data() as Order;
 
-        
+
         const orderStoreRef = order.store_id as
           | FirebaseFirestore.DocumentReference
           | null;
@@ -127,12 +131,12 @@ router.get("/history/:id", async (req, res) => {
         return {
           id: doc.id,
 
-          
+
           store: storeSnap?.exists
             ? {
-                id: orderStoreRef?.id ?? null,
-                name: storeData?.name ?? null,
-              }
+              id: orderStoreRef?.id ?? null,
+              name: storeData?.name ?? null,
+            }
             : null,
 
           status: order.status,
@@ -159,11 +163,11 @@ router.get("/history/:id", async (req, res) => {
 
           customer: customerData
             ? {
-                id: customerSnap!.id,
-                name: customerData.fullname ?? null,
-                phone: customerData.phone ?? null,
-                profile_image: customerData.profile_image ?? null,
-              }
+              id: customerSnap!.id,
+              name: customerData.fullname ?? null,
+              phone: customerData.phone ?? null,
+              profile_image: customerData.profile_image ?? null,
+            }
             : null,
         };
       })
@@ -219,12 +223,12 @@ router.put("/update/status/staff/:id", async (req, res) => {
 
       const updateData: Partial<Order> = { status };
 
-      
+
       if (status === "washing") {
-        
+
       }
 
-      
+
       if (status === "drying") {
         if (order.machine_washer_id) {
           tx.update(order.machine_washer_id, {
@@ -239,7 +243,7 @@ router.put("/update/status/staff/:id", async (req, res) => {
         }
       }
 
-      
+
       if (status === "waiting_delivery") {
         if (order.machine_washer_id) {
           tx.update(order.machine_washer_id, {
@@ -315,7 +319,7 @@ router.put("/calculate/:id", async (req, res) => {
     let dryer: Machine | null = null;
     let servicePrice = 0;
 
-    
+
     if (serviceType === "wash" || serviceType === "wash_dry") {
       if (!washer_id)
         return res.status(400).json({ ok: false, message: "กรุณาระบุ washer_id" });
@@ -335,7 +339,7 @@ router.put("/calculate/:id", async (req, res) => {
       servicePrice += washer.price;
     }
 
-    
+
     if (serviceType === "dry" || serviceType === "wash_dry") {
       if (!dryer_id)
         return res.status(400).json({ ok: false, message: "กรุณาระบุ dryer_id" });
@@ -375,7 +379,7 @@ router.put("/calculate/:id", async (req, res) => {
             : "washing"
           : "waiting_payment";
 
-      
+
       if (washer) {
         const fw = await tx.get(db.collection("machines").doc(washer_id));
         if (fw.data()?.status !== "available")
@@ -455,7 +459,7 @@ router.get("/calculate/preview/:id", async (req, res) => {
     if (order.staff_id?.id !== staff_id)
       return res.status(403).json({ ok: false, message: "คุณไม่ใช่ staff ที่รับงานนี้" });
 
-    
+
     const addressRef = order.address_id as FirebaseFirestore.DocumentReference;
     const storeRef = order.store_id as FirebaseFirestore.DocumentReference;
 
@@ -471,17 +475,7 @@ router.get("/calculate/preview/:id", async (req, res) => {
     const storeData = storeSnap.data() as StoreData;
 
 
-    function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-      const R = 6371;
-      const dLat = (lat2 - lat1) * Math.PI / 180;
-      const dLng = (lng2 - lng1) * Math.PI / 180;
-      const a =
-        Math.sin(dLat / 2) ** 2 +
-        Math.cos(lat1 * Math.PI / 180) *
-        Math.cos(lat2 * Math.PI / 180) *
-        Math.sin(dLng / 2) ** 2;
-      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    }
+
 
     let delivery_price = 0;
     let distanceKm = 0;
@@ -490,25 +484,38 @@ router.get("/calculate/preview/:id", async (req, res) => {
     const storeLng = storeData?.longitude;
     const cusLat = addressData?.latitude;
     const cusLng = addressData?.longitude;
+if (storeLat && storeLng && cusLat && cusLng) {
+  const rawDistance = DistanceService.haversineDistance(
+    storeLat,
+    storeLng,
+    cusLat,
+    cusLng
+  );
 
-    if (storeLat && storeLng && cusLat && cusLng) {
-      distanceKm = haversineKm(storeLat, storeLng, cusLat, cusLng);
+  // ✅ ปัดให้เหลือ 1 ตำแหน่งเหมือนที่แสดง
+  const distanceKm = Number(rawDistance.toFixed(1));
 
-      const serviceRadius = (storeData?.service_radius)
-      const deliveryMin = (storeData?.delivery_min)
-      const deliveryMax = (storeData?.delivery_max)
+  const serviceRadius = storeData?.service_radius;
+  const deliveryMin = storeData?.delivery_min;
+  const deliveryMax = storeData?.delivery_max;
 
-      if (distanceKm > serviceRadius)
-        return res.status(422).json({
-          ok: false,
-          message: `ที่อยู่ลูกค้าอยู่นอกพื้นที่ให้บริการ (${distanceKm.toFixed(1)} กม. / รัศมี ${serviceRadius} กม.)`,
-        });
+  if (distanceKm > serviceRadius)
+    return res.status(422).json({
+      ok: false,
+      message: `ที่อยู่ลูกค้าอยู่นอกพื้นที่ให้บริการ (${distanceKm.toFixed(1)} กม. / รัศมี ${serviceRadius} กม.)`,
+    });
 
-      delivery_price = calculateDeliveryFee(distanceKm, serviceRadius, deliveryMin, deliveryMax);
-    }
+  delivery_price = DeliveryService.calculateDeliveryFee(
+    distanceKm, // 👈 ตอนนี้เป็นค่าที่ปัดแล้ว
+    serviceRadius,
+    deliveryMin,
+    deliveryMax
+  );
+}
+    
     const updateData: Partial<Order> = {
-  delivery_price: delivery_price,
-};
+      delivery_price: delivery_price,
+    };
     await db.collection("orders").doc(orderId).update(updateData);
     return res.json({
       ok: true,
@@ -524,15 +531,3 @@ router.get("/calculate/preview/:id", async (req, res) => {
     return res.status(500).json({ ok: false, message: err.message ?? "server error" });
   }
 });
-function calculateDeliveryFee(
-  distanceKm: number,
-  serviceRadius: number,
-  deliveryMin: number,
-  deliveryMax: number
-): number {
-  if (distanceKm > serviceRadius)
-    throw new Error("Out of delivery area");
-
-  const shipping = deliveryMin + (distanceKm / serviceRadius) * (deliveryMax - deliveryMin);
-  return Math.round(Math.min(Math.max(shipping, deliveryMin), deliveryMax));
-}

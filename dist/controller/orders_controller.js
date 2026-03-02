@@ -4,6 +4,7 @@ exports.router = void 0;
 const express_1 = require("express");
 const firebase_1 = require("../config/firebase");
 const firestore_1 = require("firebase-admin/firestore");
+const haversine_1 = require("../services/haversine");
 exports.router = (0, express_1.Router)();
 const VALID_SERVICE_TYPES = ["wash", "dry", "wash_dry"];
 const VALID_DETERGENT = ["no_detergent", "detergent"];
@@ -59,7 +60,7 @@ exports.router.post("/create", async (req, res) => {
             if (storeLat == null || storeLng == null || customerLat == null || customerLng == null) {
                 return res.status(400).json({ ok: false, message: "ไม่พบข้อมูลพิกัด" });
             }
-            const distanceKm = haversineDistance(storeLat, storeLng, customerLat, customerLng);
+            const distanceKm = haversine_1.DistanceService.haversineDistance(storeLat, storeLng, customerLat, customerLng);
             if (distanceKm > radiusKm) {
                 return res.status(400).json({
                     ok: false,
@@ -101,15 +102,6 @@ exports.router.post("/create", async (req, res) => {
         return res.status(500).json({ ok: false, message: "Server error" });
     }
 });
-function haversineDistance(lat1, lng1, lat2, lng2) {
-    const R = 6371;
-    const toRad = (deg) => (deg * Math.PI) / 180;
-    const dLat = toRad(lat2 - lat1);
-    const dLng = toRad(lng2 - lng1);
-    const a = Math.sin(dLat / 2) ** 2 +
-        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
 exports.router.get("/list/:id", async (req, res) => {
     try {
         const customerId = req.params.id;
