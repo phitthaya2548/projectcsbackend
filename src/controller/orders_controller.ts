@@ -26,39 +26,29 @@ router.post("/create", async (req, res) => {
       detergent_option,
       before_wash_image,
       note,
-    } = req.body;
-
+    } = req.body ;
     if (!customer_id || !store_id || !service_type) {
       return res.status(400).json({ ok: false, message: "ข้อมูลไม่ครบ" });
     }
-
     if (!VALID_SERVICE_TYPES.includes(service_type)) {
       return res.status(400).json({ ok: false, message: "ประเภทบริการไม่ถูกต้อง" });
     }
-
     if (detergent_option && !VALID_DETERGENT.includes(detergent_option)) {
       return res.status(400).json({ ok: false, message: "ตัวเลือกน้ำยาไม่ถูกต้อง" });
     }
-
     const storeRef = db.collection("stores").doc(store_id);
     const customerRef = db.collection("customers").doc(customer_id);
-
     const [storeSnap, customerSnap] = await Promise.all([
       storeRef.get(),
       customerRef.get(),
     ]);
-
     if (!storeSnap.exists) {
       return res.status(404).json({ ok: false, message: "ไม่พบร้านค้า" });
     }
     if (!customerSnap.exists) {
       return res.status(404).json({ ok: false, message: "ไม่พบข้อมูลลูกค้า" });
     }
-
     const store = storeSnap.data()!;
-  
-
-    
     if (store.status !== "เปิดร้าน") {
       return res.status(400).json({ ok: false, message: "ร้านปิดอยู่ ไม่สามารถสั่งได้" });
     }
@@ -68,34 +58,26 @@ router.post("/create", async (req, res) => {
     const currentHour = now.getHours();
     const openHour = Number(store.opening_hours.split(":")[0]);
     const closeHour = Number(store.closed_hours.split(":")[0]);
-
     const isOpen = openHour < closeHour
-      ? currentHour >= openHour && currentHour < closeHour 
-      : currentHour >= openHour || currentHour < closeHour;  // ข้ามคืน เช่น 20-02
-
+      ? currentHour >= openHour && currentHour < closeHour : currentHour >= openHour || currentHour < closeHour;
     if (!isOpen) {
       return res.status(400).json({ ok: false, message: "อยู่นอกเวลาให้บริการ" });
     }
-
 if (address_id) {
   const addressData = await db.collection("customer_addresses").doc(address_id).get();
   if (!addressData.exists) {
     return res.status(404).json({ ok: false, message: "ไม่พบที่อยู่" });
   }
-
   const addressInfo = addressData.data()!;
   const storeLat: number = store.latitude;
   const storeLng: number = store.longitude;
   const customerLat: number = addressInfo.latitude;
   const customerLng: number = addressInfo.longitude;
   const radiusKm: number = store.service_radius;
-
   if (storeLat == null || storeLng == null || customerLat == null || customerLng == null) {
     return res.status(400).json({ ok: false, message: "ไม่พบข้อมูลพิกัด" });
   }
-
   const distanceKm = DistanceService.haversineDistance(storeLat, storeLng, customerLat, customerLng);
-
   if (distanceKm > radiusKm) {
     return res.status(400).json({
       ok: false,
@@ -103,9 +85,7 @@ if (address_id) {
     });
   }
 }
-
 const orderRef = db.collection("orders").doc();
-
 const newOrder: Order = {
   order_id: orderRef.id,
   customer_id: customerRef,
@@ -127,21 +107,17 @@ const newOrder: Order = {
   status: "waiting_pickup" as OrderStatus,
   order_datetime: Timestamp.now(),
 };
-
 await orderRef.set(newOrder);
-
 return res.status(201).json({
   ok: true,
   message: "สร้างออเดอร์สำเร็จ",
   order_id: orderRef.id,
 });
-
   } catch (error: any) {
     console.error(error);
     return res.status(500).json({ ok: false, message: "Server error" });
   }
 });
-
 
 router.get("/list/:id", async (req, res) => {
   try {

@@ -503,21 +503,21 @@ exports.router.get("/getstores", async (req, res) => {
         const customerLat = Number(req.query.lat);
         const customerLng = Number(req.query.lng);
         const snap = await firebase_js_1.db.collection("stores").get();
-        let data = snap.docs.map(d => {
-            const s = d.data();
+        let data = snap.docs.map(data => {
+            const storeData = data.data();
             let distance = 0;
             if (!isNaN(customerLat) && !isNaN(customerLng)) {
-                distance = haversine_js_1.DistanceService.haversineDistance(customerLat, customerLng, s.latitude, s.longitude);
+                distance = haversine_js_1.DistanceService.haversineDistance(customerLat, customerLng, storeData.latitude, storeData.longitude);
             }
             return {
-                store_id: d.id,
-                store_name: s.store_name ?? "",
-                profile_image: s.profile_image ?? "",
-                rating: s.rating_avg ?? 0,
-                opening: `${s.opening_hours ?? ""} - ${s.closed_hours ?? ""}`,
-                services: s.services ?? [],
+                store_id: data.id,
+                store_name: storeData.store_name ?? "",
+                profile_image: storeData.profile_image ?? "",
+                rating: storeData.rating_avg ?? 0,
+                opening: `${storeData.opening_hours ?? ""} - ${storeData.closed_hours ?? ""}`,
+                services: storeData.services ?? [],
                 distance_km: Number(distance.toFixed(1)),
-                status: s.status ?? "ปิดชั่วคราว",
+                status: storeData.status ?? "ปิดชั่วคราว",
             };
         });
         if (search) {

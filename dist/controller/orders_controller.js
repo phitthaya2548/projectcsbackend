@@ -41,8 +41,7 @@ exports.router.post("/create", async (req, res) => {
         const openHour = Number(store.opening_hours.split(":")[0]);
         const closeHour = Number(store.closed_hours.split(":")[0]);
         const isOpen = openHour < closeHour
-            ? currentHour >= openHour && currentHour < closeHour
-            : currentHour >= openHour || currentHour < closeHour; // ข้ามคืน เช่น 20-02
+            ? currentHour >= openHour && currentHour < closeHour : currentHour >= openHour || currentHour < closeHour;
         if (!isOpen) {
             return res.status(400).json({ ok: false, message: "อยู่นอกเวลาให้บริการ" });
         }

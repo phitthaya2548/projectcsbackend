@@ -139,7 +139,7 @@ router.put("/profile/:id", upload.single("profile_image"), async (req, res) => {
     await ref.set(update,{merge:true});
 
     const snap = await ref.get();
-    const data = snap.data() as any;
+    const data = snap.data() as StoreData;
 
     return res.json({
       ok:true,

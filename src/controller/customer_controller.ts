@@ -631,10 +631,6 @@ router.delete("/addresses/delete/:id", async (req, res) => {
   }
 });
 
-
-
-
-
 router.get("/getstores", async (req, res) => {
   try {
     const search = (req.query.search as string || "").trim();
@@ -644,23 +640,23 @@ router.get("/getstores", async (req, res) => {
 
     const snap = await db.collection("stores").get();
 
-    let data = snap.docs.map(d => {
-      const s = d.data();
+    let data = snap.docs.map(data => {
+      const storeData = data.data();
 
       let distance = 0;
       if (!isNaN(customerLat) && !isNaN(customerLng)) {
-        distance = DistanceService.haversineDistance(customerLat, customerLng, s.latitude, s.longitude);
+        distance = DistanceService.haversineDistance(customerLat, customerLng, storeData.latitude, storeData.longitude);
       }
 
       return {
-        store_id: d.id,
-        store_name: s.store_name ?? "",
-        profile_image: s.profile_image ?? "",
-        rating: s.rating_avg ?? 0,
-        opening: `${s.opening_hours ?? ""} - ${s.closed_hours ?? ""}`,
-        services: s.services ?? [],
+        store_id: data.id,
+        store_name: storeData.store_name ?? "",
+        profile_image: storeData.profile_image ?? "",
+        rating: storeData.rating_avg ?? 0,
+        opening: `${storeData.opening_hours ?? ""} - ${storeData.closed_hours ?? ""}`,
+        services: storeData.services ?? [],
         distance_km: Number(distance.toFixed(1)),
-        status: s.status ?? "ปิดชั่วคราว",
+        status: storeData.status ?? "ปิดชั่วคราว",
       };
     });
 

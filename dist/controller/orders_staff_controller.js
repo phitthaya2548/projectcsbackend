@@ -5,7 +5,6 @@ const express_1 = require("express");
 const firebase_1 = require("../config/firebase");
 const haversine_1 = require("../services/haversine");
 const calculateDelivery_1 = require("../services/calculateDelivery");
-console.log(require("../services/calculateDelivery"));
 exports.router = (0, express_1.Router)();
 exports.router.put("/start_wash/:id", async (req, res) => {
     try {
@@ -369,19 +368,16 @@ exports.router.get("/calculate/preview/:id", async (req, res) => {
         const cusLat = addressData?.latitude;
         const cusLng = addressData?.longitude;
         if (storeLat && storeLng && cusLat && cusLng) {
-            const rawDistance = haversine_1.DistanceService.haversineDistance(storeLat, storeLng, cusLat, cusLng);
-            // ✅ ปัดให้เหลือ 1 ตำแหน่งเหมือนที่แสดง
-            const distanceKm = Number(rawDistance.toFixed(1));
-            const serviceRadius = storeData?.service_radius;
-            const deliveryMin = storeData?.delivery_min;
-            const deliveryMax = storeData?.delivery_max;
+            distanceKm = haversine_1.DistanceService.haversineDistance(storeLat, storeLng, cusLat, cusLng);
+            const serviceRadius = (storeData?.service_radius);
+            const deliveryMin = (storeData?.delivery_min);
+            const deliveryMax = (storeData?.delivery_max);
             if (distanceKm > serviceRadius)
                 return res.status(422).json({
                     ok: false,
-                    message: `ที่อยู่ลูกค้าอยู่นอกพื้นที่ให้บริการ (${distanceKm.toFixed(1)} กม. / รัศมี ${serviceRadius} กม.)`,
+                    message: `ที่อยู่ลูกค้าอยู่นอกพื้นที่ให้บริการ `,
                 });
-            delivery_price = calculateDelivery_1.DeliveryService.calculateDeliveryFee(distanceKm, // 👈 ตอนนี้เป็นค่าที่ปัดแล้ว
-            serviceRadius, deliveryMin, deliveryMax);
+            delivery_price = calculateDelivery_1.DeliveryService.calculateDeliveryFee(distanceKm, serviceRadius, deliveryMin, deliveryMax);
         }
         const updateData = {
             delivery_price: delivery_price,

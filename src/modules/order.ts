@@ -1,18 +1,16 @@
 import { Timestamp } from "firebase-admin/firestore";
-
 export type OrderStatus =
-  | "waiting_pickup"
-  | "picked_up"
-  | "waiting_payment"
-  | "pickup_completed"
-  | "waiting_wash"
-  | "washing"
-  | "drying"
-  | "waiting_delivery"
-  | "delivering"
-  | "completed"
-  | "cancelled";
-
+  | "waiting_pickup"      // รอรับผัา
+  | "picked_up"           // กำลังไปรับผ้า
+  | "waiting_payment"     // รอชำระเงิน
+  | "pickup_completed"    // กำลังเดินทางที่ร้าน
+  | "waiting_wash"        // รอซัก
+  | "washing"             // กำลังซัก
+  | "drying"              // กำลังอบผ้า
+  | "waiting_delivery"    // รอส่งผ้า
+  | "delivering"          // กำลังจัดส่ง
+  | "completed"           // ดำเนินการเสร็จสิ้น
+  | "cancelled";          // ยกเลิกคำสั่งซื้อ
 export type ServiceType =
   | "wash"
   | "dry"

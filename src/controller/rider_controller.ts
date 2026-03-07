@@ -19,7 +19,6 @@ router.post("/register", upload.single("profile_image"), async (req, res) => {
       vehicle_type,
       license_plate,
     } = req.body;
-    store_id = store_id?.trim();
     email = email?.trim().toLowerCase();
     username = username?.trim();
 

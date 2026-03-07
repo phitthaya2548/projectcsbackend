@@ -12,7 +12,6 @@ exports.router = (0, express_1.Router)();
 exports.router.post("/register", upload_1.upload.single("profile_image"), async (req, res) => {
     try {
         let { store_id, email, username, password, fullname, phone, vehicle_type, license_plate, } = req.body;
-        store_id = store_id?.trim();
         email = email?.trim().toLowerCase();
         username = username?.trim();
         if (!store_id ||

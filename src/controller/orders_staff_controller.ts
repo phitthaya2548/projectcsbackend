@@ -9,7 +9,6 @@ import { Order, OrderStatus } from "../modules/order";
 import { DistanceService } from "../services/haversine";
 import { DeliveryService } from "../services/calculateDelivery";
 
-console.log(require("../services/calculateDelivery"));
 export const router = Router();
 router.put("/start_wash/:id", async (req, res) => {
   try {
@@ -484,35 +483,26 @@ router.get("/calculate/preview/:id", async (req, res) => {
     const storeLng = storeData?.longitude;
     const cusLat = addressData?.latitude;
     const cusLng = addressData?.longitude;
-if (storeLat && storeLng && cusLat && cusLng) {
-  const rawDistance = DistanceService.haversineDistance(
-    storeLat,
-    storeLng,
-    cusLat,
-    cusLng
-  );
 
-  // ✅ ปัดให้เหลือ 1 ตำแหน่งเหมือนที่แสดง
-  const distanceKm = Number(rawDistance.toFixed(1));
+    if (storeLat && storeLng && cusLat && cusLng) {
+      distanceKm = DistanceService.haversineDistance(storeLat, storeLng, cusLat, cusLng);
+      const serviceRadius = (storeData?.service_radius)
+      const deliveryMin = (storeData?.delivery_min)
+      const deliveryMax = (storeData?.delivery_max)
 
-  const serviceRadius = storeData?.service_radius;
-  const deliveryMin = storeData?.delivery_min;
-  const deliveryMax = storeData?.delivery_max;
+      if (distanceKm > serviceRadius)
+        return res.status(422).json({
+          ok: false,
+          message: `ที่อยู่ลูกค้าอยู่นอกพื้นที่ให้บริการ `,
+        });
 
-  if (distanceKm > serviceRadius)
-    return res.status(422).json({
-      ok: false,
-      message: `ที่อยู่ลูกค้าอยู่นอกพื้นที่ให้บริการ (${distanceKm.toFixed(1)} กม. / รัศมี ${serviceRadius} กม.)`,
-    });
-
-  delivery_price = DeliveryService.calculateDeliveryFee(
-    distanceKm, // 👈 ตอนนี้เป็นค่าที่ปัดแล้ว
-    serviceRadius,
-    deliveryMin,
-    deliveryMax
-  );
-}
-    
+      delivery_price = DeliveryService.calculateDeliveryFee(
+  distanceKm,
+  serviceRadius,
+  deliveryMin,
+  deliveryMax
+);
+    }
     const updateData: Partial<Order> = {
       delivery_price: delivery_price,
     };
