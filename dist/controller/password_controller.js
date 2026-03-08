@@ -66,8 +66,7 @@ exports.router.post("/forgot_password", async (req, res) => {
                 message: "กรุณากรอกอีเมล",
             });
         }
-        const normalizedEmail = email.trim().toLowerCase();
-        const userDoc = await findUserByEmail(normalizedEmail);
+        const userDoc = await findUserByEmail(email);
         if (!userDoc) {
             return res.json({
                 ok: true,
@@ -79,13 +78,13 @@ exports.router.post("/forgot_password", async (req, res) => {
         const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
         const oldSnap = await firebase_1.db
             .collection("password_resets")
-            .where("email", "==", normalizedEmail)
+            .where("email", "==", email)
             .get();
         for (const doc of oldSnap.docs) {
             await doc.ref.delete();
         }
         const resetData = {
-            email: normalizedEmail,
+            email: email,
             otp: otpHash,
             expires_at: expiresAt,
             used: false,
@@ -93,18 +92,18 @@ exports.router.post("/forgot_password", async (req, res) => {
         const resetRef = firebase_1.db.collection("password_resets").doc();
         await resetRef.set(resetData);
         await mailer_1.mailer.sendMail({
-            from: process.env.MAIL_FROM,
-            to: normalizedEmail,
+            from: `"WashAndDry Support" <${process.env.MAIL_FROM}>`,
+            to: email,
             subject: "รหัส OTP สำหรับรีเซ็ตรหัสผ่าน",
             text: `รหัส OTP ของคุณคือ ${otp} และจะหมดอายุใน 5 นาที`,
             html: `
-        <div style="font-family: sans-serif">
-          <h2>รีเซ็ตรหัสผ่าน</h2>
-          <p>รหัส OTP ของคุณคือ</p>
-          <h1 style="letter-spacing: 4px">${otp}</h1>
-          <p>OTP นี้จะหมดอายุใน 5 นาที</p>
-        </div>
-      `,
+    <div style="font-family: sans-serif">
+      <h2>รีเซ็ตรหัสผ่าน</h2>
+      <p>รหัส OTP ของคุณคือ</p>
+      <h1 style="letter-spacing: 4px">${otp}</h1>
+      <p>OTP นี้จะหมดอายุใน 5 นาที</p>
+    </div>
+  `,
         });
         return res.json({
             ok: true,
@@ -134,10 +133,9 @@ exports.router.post("/reset_password", async (req, res) => {
                 message: "รหัสผ่านต้องอย่างน้อย 6 ตัว",
             });
         }
-        const normalizedEmail = email.trim().toLowerCase();
         const resetSnap = await firebase_1.db
             .collection("password_resets")
-            .where("email", "==", normalizedEmail)
+            .where("email", "==", email)
             .limit(1)
             .get();
         if (resetSnap.empty) {
@@ -170,7 +168,7 @@ exports.router.post("/reset_password", async (req, res) => {
                 message: "OTP ไม่ถูกต้อง",
             });
         }
-        const userDoc = await findUserByEmail(normalizedEmail);
+        const userDoc = await findUserByEmail(email);
         if (!userDoc) {
             return res.status(404).json({
                 ok: false,

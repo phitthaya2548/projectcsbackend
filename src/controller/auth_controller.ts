@@ -153,6 +153,7 @@ router.post("/login", async (req, res) => {
         username: data.username ?? "",
         email: data.email ?? "",
         phone: data.phone ?? "",
+        google_id: data.google_id ?? "",
         profile_image: data.profile_image ?? null,
 
         profile_complete: profileStatus.profile_complete,

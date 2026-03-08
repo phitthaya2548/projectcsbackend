@@ -63,7 +63,7 @@ exports.router.post("/checkslip", upload.single("file"), async (req, res) => {
         if (r.status < 200 || r.status >= 300) {
             return res.status(r.status).json({
                 ok: false,
-                message: "SlipOK verify failed",
+                message: "ตรวจสอบสลิปล้มเหลว",
                 slipok: r.data,
             });
         }

@@ -2,14 +2,15 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DeliveryService = void 0;
 class DeliveryService {
-    static calculateDeliveryFee(distanceKm, serviceRadius, deliveryMin, deliveryMax) {
-        if (distanceKm > serviceRadius) {
+    static calculateDeliveryFee(distance, maxDistance, minPrice, maxPrice) {
+        if (distance > maxDistance) {
             throw new Error("Out of delivery area");
         }
-        const shipping = deliveryMin +
-            (distanceKm / serviceRadius) *
-                (deliveryMax - deliveryMin);
-        return Math.round(Math.min(Math.max(shipping, deliveryMin), deliveryMax));
+        const shipping = minPrice +
+            (distance / maxDistance) *
+                (maxPrice - minPrice);
+        const clamped = Math.min(Math.max(shipping, minPrice), maxPrice);
+        return Math.round(clamped);
     }
 }
 exports.DeliveryService = DeliveryService;

@@ -1,21 +1,22 @@
 export class DeliveryService {
   static calculateDeliveryFee(
-    distanceKm: number,
-    serviceRadius: number,
-    deliveryMin: number,
-    deliveryMax: number
+    distance: number,
+    maxDistance: number,
+    minPrice: number,
+    maxPrice: number
   ): number {
-    if (distanceKm > serviceRadius) {
+    if (distance > maxDistance) {
       throw new Error("Out of delivery area");
     }
 
     const shipping =
-      deliveryMin +
-      (distanceKm / serviceRadius) *
-        (deliveryMax - deliveryMin);
+      minPrice +
+      (distance / maxDistance) *
+        (maxPrice - minPrice);
 
-    return Math.round(
-      Math.min(Math.max(shipping, deliveryMin), deliveryMax)
-    );
+     const clamped = Math.min(Math.max(shipping, minPrice), maxPrice);
+
+    return Math.round(clamped);
+  
   }
 }

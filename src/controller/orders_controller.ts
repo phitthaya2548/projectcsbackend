@@ -77,7 +77,7 @@ if (address_id) {
   if (storeLat == null || storeLng == null || customerLat == null || customerLng == null) {
     return res.status(400).json({ ok: false, message: "ไม่พบข้อมูลพิกัด" });
   }
-  const distanceKm = DistanceService.haversineDistance(storeLat, storeLng, customerLat, customerLng);
+  const distanceKm = DistanceService.haversineKm(storeLat, storeLng, customerLat, customerLng);
   if (distanceKm > radiusKm) {
     return res.status(400).json({
       ok: false,

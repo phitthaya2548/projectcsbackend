@@ -53,7 +53,6 @@ exports.router.post("/signup", async (req, res) => {
             });
         }
         const u = username.trim();
-        // เช็ค username 
         const usernameChecks = await Promise.all([
             firebase_1.db.collection("stores").where("username", "==", u).limit(1).get(),
             firebase_1.db.collection("customers").where("username", "==", u).limit(1).get(),

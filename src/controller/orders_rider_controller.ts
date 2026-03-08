@@ -128,7 +128,7 @@ const orderDocs = Array.from(uniqueMap.values());
         const addrLng = addressData?.longitude ?? null;
         let distance = 0;
         if (hasRiderLocation && addrLat !== null && addrLng !== null) {
-          distance = DistanceService.haversineDistance(riderlat, riderlng, addrLat, addrLng);
+          distance = DistanceService.haversineKm(riderlat, riderlng, addrLat, addrLng);
         }
 
         return {

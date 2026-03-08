@@ -35,9 +35,8 @@ router.post("/forgot_password", async (req, res) => {
       });
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
 
-    const userDoc = await findUserByEmail(normalizedEmail);
+    const userDoc = await findUserByEmail(email);
 
     if (!userDoc) {
       return res.json({
@@ -52,7 +51,7 @@ router.post("/forgot_password", async (req, res) => {
 
     const oldSnap = await db
       .collection("password_resets")
-      .where("email", "==", normalizedEmail)
+      .where("email", "==", email)
       .get();
 
     for (const doc of oldSnap.docs) {
@@ -60,7 +59,7 @@ router.post("/forgot_password", async (req, res) => {
     }
 
     const resetData: PasswordResetData = {
-      email: normalizedEmail,
+      email: email,
       otp: otpHash,
       expires_at: expiresAt,
       used: false,
@@ -69,20 +68,20 @@ router.post("/forgot_password", async (req, res) => {
     const resetRef = db.collection("password_resets").doc();
     await resetRef.set(resetData);
 
-    await mailer.sendMail({
-      from: process.env.MAIL_FROM,
-      to: normalizedEmail,
-      subject: "รหัส OTP สำหรับรีเซ็ตรหัสผ่าน",
-      text: `รหัส OTP ของคุณคือ ${otp} และจะหมดอายุใน 5 นาที`,
-      html: `
-        <div style="font-family: sans-serif">
-          <h2>รีเซ็ตรหัสผ่าน</h2>
-          <p>รหัส OTP ของคุณคือ</p>
-          <h1 style="letter-spacing: 4px">${otp}</h1>
-          <p>OTP นี้จะหมดอายุใน 5 นาที</p>
-        </div>
-      `,
-    });
+   await mailer.sendMail({
+  from: `"WashAndDry Support" <${process.env.MAIL_FROM}>`,
+  to: email,
+  subject: "รหัส OTP สำหรับรีเซ็ตรหัสผ่าน",
+  text: `รหัส OTP ของคุณคือ ${otp} และจะหมดอายุใน 5 นาที`,
+  html: `
+    <div style="font-family: sans-serif">
+      <h2>รีเซ็ตรหัสผ่าน</h2>
+      <p>รหัส OTP ของคุณคือ</p>
+      <h1 style="letter-spacing: 4px">${otp}</h1>
+      <p>OTP นี้จะหมดอายุใน 5 นาที</p>
+    </div>
+  `,
+});
 
     return res.json({
       ok: true,
@@ -115,11 +114,10 @@ router.post("/reset_password", async (req, res) => {
       });
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
 
     const resetSnap = await db
       .collection("password_resets")
-      .where("email", "==", normalizedEmail)
+      .where("email", "==", email)
       .limit(1)
       .get();
 
@@ -161,7 +159,7 @@ router.post("/reset_password", async (req, res) => {
       });
     }
 
-    const userDoc = await findUserByEmail(normalizedEmail);
+    const userDoc = await findUserByEmail(email);
 
     if (!userDoc) {
       return res.status(404).json({

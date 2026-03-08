@@ -485,7 +485,7 @@ router.get("/calculate/preview/:id", async (req, res) => {
     const cusLng = addressData?.longitude;
 
     if (storeLat && storeLng && cusLat && cusLng) {
-      distanceKm = DistanceService.haversineDistance(storeLat, storeLng, cusLat, cusLng);
+      distanceKm = DistanceService.haversineKm(storeLat, storeLng, cusLat, cusLng);
       const serviceRadius = (storeData?.service_radius)
       const deliveryMin = (storeData?.delivery_min)
       const deliveryMax = (storeData?.delivery_max)

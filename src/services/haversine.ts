@@ -1,28 +1,32 @@
 export class DistanceService {
-  private static readonly R = 6371;
+  private static earth_dadius = 6371;
 
-  private static toRad(deg: number): number {
+  private static degreesToRadians(deg: number): number {
     return (deg * Math.PI) / 180;
   }
 
-  static haversineDistance(
-    lat1: number,
-    lng1: number,
-    lat2: number,
-    lng2: number
+  static haversineKm(
+    fromLat: number,
+    fromLng: number,
+    toLat: number,
+    toLng: number
   ): number {
-    const dLat = this.toRad(lat2 - lat1);
-    const dLng = this.toRad(lng2 - lng1);
+    const latDiff = this.degreesToRadians(toLat - fromLat);
+    const lngDiff = this.degreesToRadians(toLng - fromLng);
 
-    const a =
-      Math.sin(dLat / 2) ** 2 +
-      Math.cos(this.toRad(lat1)) *
-        Math.cos(this.toRad(lat2)) *
-        Math.sin(dLng / 2) ** 2;
+    const fromLatRad = this.degreesToRadians(fromLat);
+    const toLatRad = this.degreesToRadians(toLat);
 
-    const distance =
-      this.R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const sinLat = Math.sin(latDiff / 2);
+    const sinLng = Math.sin(lngDiff / 2);
 
-    return distance;
+    const haversineValue =
+      sinLat * sinLat +
+      Math.cos(fromLatRad) * Math.cos(toLatRad) * (sinLng * sinLng);
+
+    const centralAngle =
+      2 * Math.atan2(Math.sqrt(haversineValue), Math.sqrt(1 - haversineValue));
+
+    return this.earth_dadius * centralAngle;
   }
 }

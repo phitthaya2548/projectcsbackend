@@ -26,7 +26,7 @@ router.post("/signup", async (req, res) => {
 
     const u = username.trim();
 
-    // เช็ค username 
+    
     const usernameChecks = await Promise.all([
       db.collection("stores").where("username", "==", u).limit(1).get(),
       db.collection("customers").where("username", "==", u).limit(1).get(),

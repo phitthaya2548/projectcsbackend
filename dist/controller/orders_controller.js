@@ -59,7 +59,7 @@ exports.router.post("/create", async (req, res) => {
             if (storeLat == null || storeLng == null || customerLat == null || customerLng == null) {
                 return res.status(400).json({ ok: false, message: "ไม่พบข้อมูลพิกัด" });
             }
-            const distanceKm = haversine_1.DistanceService.haversineDistance(storeLat, storeLng, customerLat, customerLng);
+            const distanceKm = haversine_1.DistanceService.haversineKm(storeLat, storeLng, customerLat, customerLng);
             if (distanceKm > radiusKm) {
                 return res.status(400).json({
                     ok: false,

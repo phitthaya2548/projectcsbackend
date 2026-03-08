@@ -58,7 +58,7 @@ exports.router.put("/profile/:id", upload_js_1.upload.single("profile_image"), a
         const { fullname, email, phone, gender, birthday } = req.body;
         const update = {};
         const emailNorm = typeof email === "string" ? email.trim().toLowerCase() : "";
-        if (currentData.google_id && email !== undefined) {
+        if (currentData.google_id && email !== undefined && email !== currentData.email) {
             return res.status(400).json({
                 ok: false,
                 message: "บัญชี Google ไม่สามารถแก้ไขอีเมลได้",
@@ -507,7 +507,7 @@ exports.router.get("/getstores", async (req, res) => {
             const storeData = data.data();
             let distance = 0;
             if (!isNaN(customerLat) && !isNaN(customerLng)) {
-                distance = haversine_js_1.DistanceService.haversineDistance(customerLat, customerLng, storeData.latitude, storeData.longitude);
+                distance = haversine_js_1.DistanceService.haversineKm(customerLat, customerLng, storeData.latitude, storeData.longitude);
             }
             return {
                 store_id: data.id,

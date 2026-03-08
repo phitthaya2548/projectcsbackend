@@ -69,12 +69,12 @@ router.put(
       const update: Partial<CustomerData> = {};
       const emailNorm =
         typeof email === "string" ? email.trim().toLowerCase() : "";
-      if (currentData.google_id && email !== undefined) {
-        return res.status(400).json({
-          ok: false,
-          message: "บัญชี Google ไม่สามารถแก้ไขอีเมลได้",
-        });
-      }
+     if (currentData.google_id && email !== undefined && email !== currentData.email) {
+  return res.status(400).json({
+    ok: false,
+    message: "บัญชี Google ไม่สามารถแก้ไขอีเมลได้",
+  });
+}
       if (!currentData.google_id && email !== undefined && emailNorm) {
         const q = await db
           .collection("customers")
@@ -645,7 +645,7 @@ router.get("/getstores", async (req, res) => {
 
       let distance = 0;
       if (!isNaN(customerLat) && !isNaN(customerLng)) {
-        distance = DistanceService.haversineDistance(customerLat, customerLng, storeData.latitude, storeData.longitude);
+        distance = DistanceService.haversineKm(customerLat, customerLng, storeData.latitude, storeData.longitude);
       }
 
       return {
