@@ -67,10 +67,7 @@ exports.router.get("/history/:id", async (req, res) => {
         const staffRef = firebase_1.db.collection("laundry_staff").doc(staff_id);
         const staffSnap = await staffRef.get();
         if (!staffSnap.exists) {
-            return res.status(404).json({
-                ok: false,
-                message: "ไม่พบ staff คนนี้",
-            });
+            return res.status(404).json({ ok: false, message: "ไม่พบ staff คนนี้" });
         }
         const ACTIVE_STATUS = [
             "waiting_wash",
@@ -89,22 +86,32 @@ exports.router.get("/history/:id", async (req, res) => {
         }
         const orders = await Promise.all(ordersSnap.docs.map(async (doc) => {
             const order = doc.data();
-            const orderStoreRef = order.store_id;
-            const [storeSnap, addressSnap, customerSnap] = await Promise.all([
-                orderStoreRef ? orderStoreRef.get() : Promise.resolve(null),
-                order.address_id ? order.address_id.get() : Promise.resolve(null),
-                order.customer_id ? order.customer_id.get() : Promise.resolve(null),
+            const [storeSnap, addressSnap, customerSnap, washerSnap, dryerSnap] = await Promise.all([
+                order.store_id
+                    ? order.store_id.get()
+                    : Promise.resolve(null),
+                order.address_id
+                    ? order.address_id.get()
+                    : Promise.resolve(null),
+                order.customer_id
+                    ? order.customer_id.get()
+                    : Promise.resolve(null),
+                order.machine_washer_id
+                    ? order.machine_washer_id.get()
+                    : Promise.resolve(null),
+                order.machine_dryer_id
+                    ? order.machine_dryer_id.get()
+                    : Promise.resolve(null),
             ]);
             const storeData = storeSnap?.exists ? storeSnap.data() : null;
             const addressData = addressSnap?.exists ? addressSnap.data() : null;
             const customerData = customerSnap?.exists ? customerSnap.data() : null;
+            const washerData = washerSnap?.exists ? washerSnap.data() : null;
+            const dryerData = dryerSnap?.exists ? dryerSnap.data() : null;
             return {
                 id: doc.id,
-                store: storeSnap?.exists
-                    ? {
-                        id: orderStoreRef?.id ?? null,
-                        name: storeData?.name ?? null,
-                    }
+                store: storeData
+                    ? { id: storeSnap.id, name: storeData.name ?? null }
                     : null,
                 status: order.status,
                 service_type: order.service_type,
@@ -112,9 +119,9 @@ exports.router.get("/history/:id", async (req, res) => {
                 note: order.note ?? null,
                 before_wash_image: order.before_wash_image ?? null,
                 after_wash_image: order.after_wash_image ?? null,
-                wash_dry_weight: order.wash_dry_weight,
-                service_price: order.service_price,
-                delivery_price: order.delivery_price,
+                wash_dry_weight: order.wash_dry_weight ?? null,
+                service_price: order.service_price ?? null,
+                delivery_price: order.delivery_price ?? null,
                 rider_pickup_id: order.rider_pickup_id?.id ?? null,
                 rider_delivery_id: order.rider_delivery_id?.id ?? null,
                 order_datetime: order.order_datetime
@@ -127,6 +134,24 @@ exports.router.get("/history/:id", async (req, res) => {
                         name: customerData.fullname ?? null,
                         phone: customerData.phone ?? null,
                         profile_image: customerData.profile_image ?? null,
+                    }
+                    : null,
+                washer: washerData
+                    ? {
+                        id: washerSnap.id,
+                        name: washerData.name ?? null,
+                        capacity: washerData.capacity ?? null,
+                        work_minutes: washerData.work_minutes ?? null,
+                        status: washerData.status ?? null,
+                    }
+                    : null,
+                dryer: dryerData
+                    ? {
+                        id: dryerSnap.id,
+                        name: dryerData.name ?? null,
+                        capacity: dryerData.capacity ?? null,
+                        work_minutes: dryerData.work_minutes ?? null,
+                        status: dryerData.status ?? null,
                     }
                     : null,
             };
