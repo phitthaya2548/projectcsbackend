@@ -21,16 +21,14 @@ exports.router.post("/checkslip", upload.single("file"), async (req, res) => {
                 message: "แนบไฟล์สลิป key=file",
             });
         }
-        const customerId = req.body.customer_id;
+        const customerId = String(req.body.customer_id || "").trim();
         if (!customerId) {
             return res.status(400).json({
                 ok: false,
                 message: "กรุณาระบุ customer_id",
             });
         }
-        const customerRef = firebase_1.db
-            .collection("customers")
-            .doc(String(customerId));
+        const customerRef = firebase_1.db.collection("customers").doc(customerId);
         const customerSnap = await customerRef.get();
         if (!customerSnap.exists) {
             return res.status(404).json({
@@ -69,7 +67,7 @@ exports.router.post("/checkslip", upload.single("file"), async (req, res) => {
         }
         const data = r.data?.data || r.data;
         const amount = Number(data?.amount);
-        const transRef = data?.transRef;
+        const transRef = String(data?.transRef || "").trim();
         if (!amount || amount <= 0) {
             return res.status(400).json({
                 ok: false,
@@ -82,21 +80,27 @@ exports.router.post("/checkslip", upload.single("file"), async (req, res) => {
                 message: "ไม่พบเลขอ้างอิงธุรกรรม",
             });
         }
-        const topupDocRef = firebase_1.db
+        const duplicateSnap = await firebase_1.db
             .collection("topup_history")
-            .doc(transRef);
+            .where("trans_ref", "==", transRef)
+            .limit(1)
+            .get();
+        if (!duplicateSnap.empty) {
+            return res.status(400).json({
+                ok: false,
+                message: "สลิปนี้ถูกใช้แล้ว",
+            });
+        }
+        const docRef = firebase_1.db.collection("topup_history").doc();
+        const topupData = {
+            topup_id: docRef.id,
+            customer_id: customerRef,
+            amount: amount,
+            trans_ref: transRef,
+            topup_datetime: firestore_1.Timestamp.now(),
+        };
         await firebase_1.db.runTransaction(async (tx) => {
-            const existing = await tx.get(topupDocRef);
-            if (existing.exists) {
-                throw new Error("DUPLICATE_SLIP");
-            }
-            const topupData = {
-                customer_id: customerRef,
-                amount,
-                trans_ref: transRef,
-                topup_datetime: firestore_1.Timestamp.now(),
-            };
-            tx.set(topupDocRef, topupData);
+            tx.set(docRef, topupData);
             tx.update(customerRef, {
                 wallet_balance: firebase_1.FieldValue.increment(amount),
             });
@@ -104,17 +108,10 @@ exports.router.post("/checkslip", upload.single("file"), async (req, res) => {
         return res.json({
             ok: true,
             message: "เติมเงินสำเร็จ",
-            amount,
-            trans_ref: transRef,
+            data: topupData,
         });
     }
     catch (e) {
-        if (e.message === "DUPLICATE_SLIP") {
-            return res.status(400).json({
-                ok: false,
-                message: "สลิปนี้ถูกใช้แล้ว",
-            });
-        }
         console.error("SERVER ERROR:", e);
         return res.status(500).json({
             ok: false,
