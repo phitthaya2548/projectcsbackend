@@ -686,3 +686,27 @@ exports.router.get("/machines/:id", async (req, res) => {
         });
     }
 });
+exports.router.delete("/machine/delete/:id", async (req, res) => {
+    try {
+        const machineId = req.params.id;
+        const machineRef = firebase_1.db.collection("machines").doc(machineId);
+        const snap = await machineRef.get();
+        if (!snap.exists) {
+            return res.status(404).json({
+                ok: false,
+                message: "ไม่พบเครื่อง",
+            });
+        }
+        await machineRef.delete();
+        return res.json({
+            ok: true,
+            message: "ลบเครื่องสำเร็จ",
+        });
+    }
+    catch (e) {
+        return res.status(500).json({
+            ok: false,
+            message: e.message || "Server error",
+        });
+    }
+});

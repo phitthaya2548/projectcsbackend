@@ -18,7 +18,7 @@ exports.router.post("/checkslip", upload.single("file"), async (req, res) => {
         if (!file) {
             return res.status(400).json({
                 ok: false,
-                message: "แนบไฟล์สลิป key=file",
+                message: "แนบไฟล์สลิป",
             });
         }
         const customerId = String(req.body.customer_id || "").trim();

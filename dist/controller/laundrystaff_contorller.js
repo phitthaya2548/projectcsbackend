@@ -98,25 +98,38 @@ exports.router.post("/register", upload_1.upload.single("profile_image"), async 
 exports.router.put("/update/:id", upload_1.upload.single("profile_image"), async (req, res) => {
     try {
         const staff_id = req.params.id;
-        if (!staff_id)
-            return res.status(400).json({ ok: false, message: "ไม่พบ staff_id" });
+        if (!staff_id) {
+            return res.status(400).json({
+                ok: false,
+                message: "ไม่พบ staff_id",
+            });
+        }
         const staffRef = firebase_1.db.collection("laundry_staff").doc(staff_id);
         const snap = await staffRef.get();
-        if (!snap.exists)
-            return res.status(404).json({ ok: false, message: "ไม่พบพนักงาน" });
-        const { username, password, email, full_name, phone, status } = req.body;
+        if (!snap.exists) {
+            return res.status(404).json({
+                ok: false,
+                message: "ไม่พบพนักงาน",
+            });
+        }
+        const { username, password, email, fullname, phone, status } = req.body;
         const updateData = {};
-        if (username)
+        if (username !== undefined && username.trim() !== "") {
             updateData.username = username.trim();
-        if (email)
+        }
+        if (email !== undefined && email.trim() !== "") {
             updateData.email = email.trim().toLowerCase();
-        if (full_name)
-            updateData.fullname = full_name.trim();
-        if (phone)
+        }
+        if (fullname !== undefined && fullname.trim() !== "") {
+            updateData.fullname = fullname.trim();
+        }
+        if (phone !== undefined && phone.trim() !== "") {
             updateData.phone = phone.trim();
-        if (status)
+        }
+        if (status !== undefined && status.trim() !== "") {
             updateData.status = status;
-        if (password) {
+        }
+        if (password !== undefined && password.trim() !== "") {
             updateData.password = await bcrypt_1.default.hash(password.trim(), 10);
         }
         if (req.file) {
@@ -127,10 +140,15 @@ exports.router.put("/update/:id", upload_1.upload.single("profile_image"), async
                 contentType: req.file.mimetype,
                 resumable: false,
             });
-            // ทำให้ไฟล์เป็น public
             await file.makePublic();
             const publicUrl = `https://storage.googleapis.com/${firebase_1.bucket.name}/${file.name}`;
             updateData.profile_image = publicUrl;
+        }
+        if (Object.keys(updateData).length === 0) {
+            return res.status(400).json({
+                ok: false,
+                message: "ไม่มีข้อมูลที่ต้องการแก้ไข",
+            });
         }
         await staffRef.update(updateData);
         return res.json({
