@@ -43,20 +43,27 @@ router.put("/profile/:id", upload.single("profile_image"), async (req, res) => {
 
     const emailNorm = email?.trim().toLowerCase() || "";
 
-    if (email !== undefined) {
-      const q = await db
-        .collection("stores")
-        .where("email","==",emailNorm)
-        .limit(1)
-        .get();
+  if (email !== undefined) {
+  const [riderSnap, storeSnap, customerSnap, staffSnap] = await Promise.all([
+    db.collection("riders").where("email", "==", emailNorm).limit(1).get(),
+    db.collection("stores").where("email", "==", emailNorm).limit(1).get(),
+    db.collection("customers").where("email", "==", emailNorm).limit(1).get(),
+    db.collection("laundry_staff").where("email", "==", emailNorm).limit(1).get(),
+  ]);
 
-      if (!q.empty && q.docs[0].id !== storeId) {
-        return res.status(409).json({
-          ok:false,
-          message:"อีเมลนี้ถูกใช้แล้ว"
-        });
-      }
-    }
+  const usedInRiders = !riderSnap.empty;
+  const usedInCustomers = !customerSnap.empty;
+  const usedInStaff = !staffSnap.empty;
+  const usedInOtherStore =
+    !storeSnap.empty && storeSnap.docs[0].id !== storeId;
+
+  if (usedInRiders || usedInCustomers || usedInStaff || usedInOtherStore) {
+    return res.status(409).json({
+      ok: false,
+      message: "อีเมลนี้ถูกใช้แล้ว"
+    });
+  }
+}
 
     const update: Record<string,any> = {};
 

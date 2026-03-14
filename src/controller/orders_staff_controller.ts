@@ -76,7 +76,7 @@ router.put("/start_wash/:id", async (req, res) => {
     });
   }
 });
-router.get("/history/:id", async (req, res) => {
+router.get("/historynow/:id", async (req, res) => {
   try {
     const staff_id = req.params.id as string;
 
@@ -105,34 +105,43 @@ router.get("/history/:id", async (req, res) => {
       return res.json({ ok: true, data: [] });
     }
 
-    const orders = await Promise.all(
-      ordersSnap.docs.map(async (doc) => {
-        const order = doc.data() as Order;
+  const orders = await Promise.all(
+  ordersSnap.docs.map(async (doc) => {
+    const order = doc.data() as Order;
 
-        const [storeSnap, addressSnap, customerSnap, washerSnap, dryerSnap] =
-          await Promise.all([
-            order.store_id
-              ? (order.store_id as FirebaseFirestore.DocumentReference).get()
-              : Promise.resolve(null),
-            order.address_id
-              ? (order.address_id as FirebaseFirestore.DocumentReference).get()
-              : Promise.resolve(null),
-            order.customer_id
-              ? (order.customer_id as FirebaseFirestore.DocumentReference).get()
-              : Promise.resolve(null),
-            order.machine_washer_id
-              ? (order.machine_washer_id as FirebaseFirestore.DocumentReference).get()
-              : Promise.resolve(null),
-            order.machine_dryer_id
-              ? (order.machine_dryer_id as FirebaseFirestore.DocumentReference).get()
-              : Promise.resolve(null),
-          ]);
+    const [storeSnap, addressSnap, customerSnap, washerSnap, dryerSnap] =
+      await Promise.all([
+        order.store_id ? order.store_id.get() : null,
+        order.address_id ? order.address_id.get() : null,
+        order.customer_id ? order.customer_id.get() : null,
+        order.machine_washer_id ? order.machine_washer_id.get() : null,
+        order.machine_dryer_id ? order.machine_dryer_id.get() : null,
+      ]);
 
-        const storeData    = storeSnap?.exists    ? storeSnap.data()    : null;
-        const addressData  = addressSnap?.exists  ? addressSnap.data()  : null;
-        const customerData = customerSnap?.exists ? customerSnap.data() : null;
-        const washerData   = washerSnap?.exists   ? washerSnap.data()   : null;
-        const dryerData    = dryerSnap?.exists    ? dryerSnap.data()    : null;
+    let storeData = null;
+    if (storeSnap && storeSnap.exists) {
+      storeData = storeSnap.data();
+    }
+
+    let addressData = null;
+    if (addressSnap && addressSnap.exists) {
+      addressData = addressSnap.data();
+    }
+
+    let customerData = null;
+    if (customerSnap && customerSnap.exists) {
+      customerData = customerSnap.data();
+    }
+
+    let washerData = null;
+    if (washerSnap && washerSnap.exists) {
+      washerData = washerSnap.data();
+    }
+
+    let dryerData = null;
+    if (dryerSnap && dryerSnap.exists) {
+      dryerData = dryerSnap.data();
+    }
 
         return {
           id: doc.id,
@@ -208,19 +217,6 @@ router.put("/update/status/staff/:id", async (req, res) => {
       status: OrderStatus;
     };
 
-    const ALLOWED: OrderStatus[] = [
-      "washing",
-      "drying",
-      "waiting_delivery",
-    ];
-
-    if (!status || !ALLOWED.includes(status)) {
-      return res.status(400).json({
-        ok: false,
-        message: `สถานะต้องเป็น: ${ALLOWED.join(", ")}`,
-      });
-    }
-
     if (!staff_id) {
       return res.status(400).json({
         ok: false,
@@ -248,7 +244,6 @@ router.put("/update/status/staff/:id", async (req, res) => {
       if (status === "washing") {
 
       }
-
 
       if (status === "drying") {
         if (order.machine_washer_id) {
@@ -387,11 +382,15 @@ router.put("/calculate/:id", async (req, res) => {
       const orderDoc = await tx.get(orderRef);
       const orderData = orderDoc.data() as Order;
 
-      const customerRef =
-        orderData.customer_id as FirebaseFirestore.DocumentReference;
+     const customerRef = orderData.customer_id;
 
-      const customerSnap = await tx.get(customerRef);
-      const wallet = (customerSnap.data() as any)?.wallet_balance ?? 0;
+if (!customerRef) {
+  throw new Error("ไม่พบ customer");
+}
+
+const customerSnap = await tx.get(customerRef);
+const wallet = customerSnap.data()?.wallet_balance ?? 0;
+
 
       const nextStatus: OrderStatus =
         wallet >= grandTotal

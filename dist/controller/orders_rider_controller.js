@@ -79,11 +79,27 @@ exports.router.get("/:id", async (req, res) => {
                 .where("status", "in", activeStatuses)
                 .get(),
         ]);
-        const allDocs = pickupSnap.docs.concat(deliverySnap.docs);
-        const uniqueMap = new Map(allDocs.map((doc) => [doc.id, doc]));
-        const orderDocs = Array.from(uniqueMap.values());
+        const pickupDocs = pickupSnap.docs;
+        const deliveryDocs = deliverySnap.docs;
+        const allDocs = pickupDocs.concat(deliveryDocs);
+        const orderDocs = [];
+        for (const doc of allDocs) {
+            let alreadyExists = false;
+            for (const savedDoc of orderDocs) {
+                if (savedDoc.id === doc.id) {
+                    alreadyExists = true;
+                    break;
+                }
+            }
+            if (!alreadyExists) {
+                orderDocs.push(doc);
+            }
+        }
         if (orderDocs.length === 0) {
-            return res.status(404).json({ ok: false, message: "ไม่พบออเดอร์ของไรเดอร์คนนี้" });
+            return res.status(404).json({
+                ok: false,
+                message: "ไม่พบออเดอร์ของไรเดอร์คนนี้",
+            });
         }
         const orders = await Promise.all(orderDocs.map(async (orderDoc) => {
             const orderData = orderDoc.data();

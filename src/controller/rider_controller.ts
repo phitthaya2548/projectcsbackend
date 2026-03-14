@@ -51,29 +51,36 @@ router.post("/register", upload.single("profile_image"), async (req, res) => {
       });
     }
     
-    const usernameChecks = await Promise.all([
-  db.collection("riders").where("username", "==", username).limit(1).get(),
-  db.collection("stores").where("username", "==", username).limit(1).get(),
-  db.collection("customers").where("username", "==", username).limit(1).get(),
-  db.collection("laundry_staff").where("username", "==", username).limit(1).get(),
-]);
+const riderUsername = await db.collection("riders").where("username", "==", username).limit(1).get();
+const storeUsername = await db.collection("stores").where("username", "==", username).limit(1).get();
+const customerUsername = await db.collection("customers").where("username", "==", username).limit(1).get();
+const staffUsername = await db.collection("laundry_staff").where("username", "==", username).limit(1).get();
 
-if (usernameChecks.some(check => !check.empty)) {
+if (
+  !riderUsername.empty ||
+  !storeUsername.empty ||
+  !customerUsername.empty ||
+  !staffUsername.empty
+) {
   return res.status(409).json({
     ok: false,
     message: "username นี้ถูกใช้งานแล้ว",
   });
-}
+};
 
 
-    const emailChecks = await Promise.all([
-  db.collection("riders").where("email", "==", email).limit(1).get(),
-  db.collection("stores").where("email", "==", email).limit(1).get(),
-  db.collection("customers").where("email", "==", email).limit(1).get(),
-  db.collection("laundry_staff").where("email", "==", email).limit(1).get(),
-]);
 
-if (emailChecks.some(s => !s.empty)) {
+ const riderEmail = await db.collection("riders").where("email", "==", email).limit(1).get();
+const storeEmail = await db.collection("stores").where("email", "==", email).limit(1).get();
+const customerEmail = await db.collection("customers").where("email", "==", email).limit(1).get();
+const staffEmail = await db.collection("laundry_staff").where("email", "==", email).limit(1).get();
+
+if (
+  !riderEmail.empty ||
+  !storeEmail.empty ||
+  !customerEmail.empty ||
+  !staffEmail.empty
+) {
   return res.status(409).json({
     ok: false,
     message: "email ถูกใช้แล้ว",

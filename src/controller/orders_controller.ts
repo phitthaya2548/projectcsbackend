@@ -11,8 +11,7 @@ export const router = Router();
 
 
 
-const VALID_SERVICE_TYPES: ServiceType[] = ["wash", "dry", "wash_dry"];
-const VALID_DETERGENT: DETERGENT_OPTIONS[] = ["no_detergent", "detergent"];
+
 
 
 
@@ -29,12 +28,6 @@ router.post("/create", async (req, res) => {
     } = req.body ;
     if (!customer_id || !store_id || !service_type) {
       return res.status(400).json({ ok: false, message: "ข้อมูลไม่ครบ" });
-    }
-    if (!VALID_SERVICE_TYPES.includes(service_type)) {
-      return res.status(400).json({ ok: false, message: "ประเภทบริการไม่ถูกต้อง" });
-    }
-    if (detergent_option && !VALID_DETERGENT.includes(detergent_option)) {
-      return res.status(400).json({ ok: false, message: "ตัวเลือกน้ำยาไม่ถูกต้อง" });
     }
     const storeRef = db.collection("stores").doc(store_id);
     const customerRef = db.collection("customers").doc(customer_id);
@@ -58,11 +51,26 @@ router.post("/create", async (req, res) => {
     const currentHour = now.getHours();
     const openHour = Number(store.opening_hours.split(":")[0]);
     const closeHour = Number(store.closed_hours.split(":")[0]);
-    const isOpen = openHour < closeHour
-      ? currentHour >= openHour && currentHour < closeHour : currentHour >= openHour || currentHour < closeHour;
-    if (!isOpen) {
-      return res.status(400).json({ ok: false, message: "อยู่นอกเวลาให้บริการ" });
-    }
+    let isOpen = false;
+
+if (openHour < closeHour) {
+  // กรณีเปิดและปิดในวันเดียวกัน เช่น 08:00 - 20:00
+  if (currentHour >= openHour && currentHour < closeHour) {
+    isOpen = true;
+  }
+} else {
+  // กรณีข้ามเที่ยงคืน เช่น 20:00 - 06:00
+  if (currentHour >= openHour || currentHour < closeHour) {
+    isOpen = true;
+  }
+}
+
+if (!isOpen) {
+  return res.status(400).json({
+    ok: false,
+    message: "อยู่นอกเวลาให้บริการ",
+  });
+}
 if (address_id) {
   const addressData = await db.collection("customer_addresses").doc(address_id).get();
   if (!addressData.exists) {

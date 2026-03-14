@@ -36,25 +36,28 @@ exports.router.post("/register", upload_1.upload.single("profile_image"), async 
                 message: "เบอร์โทรต้องมี 10 หลัก",
             });
         }
-        const usernameChecks = await Promise.all([
-            firebase_1.db.collection("riders").where("username", "==", username).limit(1).get(),
-            firebase_1.db.collection("stores").where("username", "==", username).limit(1).get(),
-            firebase_1.db.collection("customers").where("username", "==", username).limit(1).get(),
-            firebase_1.db.collection("laundry_staff").where("username", "==", username).limit(1).get(),
-        ]);
-        if (usernameChecks.some(check => !check.empty)) {
+        const riderUsername = await firebase_1.db.collection("riders").where("username", "==", username).limit(1).get();
+        const storeUsername = await firebase_1.db.collection("stores").where("username", "==", username).limit(1).get();
+        const customerUsername = await firebase_1.db.collection("customers").where("username", "==", username).limit(1).get();
+        const staffUsername = await firebase_1.db.collection("laundry_staff").where("username", "==", username).limit(1).get();
+        if (!riderUsername.empty ||
+            !storeUsername.empty ||
+            !customerUsername.empty ||
+            !staffUsername.empty) {
             return res.status(409).json({
                 ok: false,
                 message: "username นี้ถูกใช้งานแล้ว",
             });
         }
-        const emailChecks = await Promise.all([
-            firebase_1.db.collection("riders").where("email", "==", email).limit(1).get(),
-            firebase_1.db.collection("stores").where("email", "==", email).limit(1).get(),
-            firebase_1.db.collection("customers").where("email", "==", email).limit(1).get(),
-            firebase_1.db.collection("laundry_staff").where("email", "==", email).limit(1).get(),
-        ]);
-        if (emailChecks.some(s => !s.empty)) {
+        ;
+        const riderEmail = await firebase_1.db.collection("riders").where("email", "==", email).limit(1).get();
+        const storeEmail = await firebase_1.db.collection("stores").where("email", "==", email).limit(1).get();
+        const customerEmail = await firebase_1.db.collection("customers").where("email", "==", email).limit(1).get();
+        const staffEmail = await firebase_1.db.collection("laundry_staff").where("email", "==", email).limit(1).get();
+        if (!riderEmail.empty ||
+            !storeEmail.empty ||
+            !customerEmail.empty ||
+            !staffEmail.empty) {
             return res.status(409).json({
                 ok: false,
                 message: "email ถูกใช้แล้ว",

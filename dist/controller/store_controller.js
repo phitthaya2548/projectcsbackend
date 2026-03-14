@@ -25,12 +25,17 @@ exports.router.put("/profile/:id", upload_1.upload.single("profile_image"), asyn
         const { store_name, email, phone, address, opening_hours, closed_hours, service_radius, latitude, longitude, facebook, line_id, status, delivery_min, delivery_max } = req.body;
         const emailNorm = email?.trim().toLowerCase() || "";
         if (email !== undefined) {
-            const q = await firebase_1.db
-                .collection("stores")
-                .where("email", "==", emailNorm)
-                .limit(1)
-                .get();
-            if (!q.empty && q.docs[0].id !== storeId) {
+            const [riderSnap, storeSnap, customerSnap, staffSnap] = await Promise.all([
+                firebase_1.db.collection("riders").where("email", "==", emailNorm).limit(1).get(),
+                firebase_1.db.collection("stores").where("email", "==", emailNorm).limit(1).get(),
+                firebase_1.db.collection("customers").where("email", "==", emailNorm).limit(1).get(),
+                firebase_1.db.collection("laundry_staff").where("email", "==", emailNorm).limit(1).get(),
+            ]);
+            const usedInRiders = !riderSnap.empty;
+            const usedInCustomers = !customerSnap.empty;
+            const usedInStaff = !staffSnap.empty;
+            const usedInOtherStore = !storeSnap.empty && storeSnap.docs[0].id !== storeId;
+            if (usedInRiders || usedInCustomers || usedInStaff || usedInOtherStore) {
                 return res.status(409).json({
                     ok: false,
                     message: "อีเมลนี้ถูกใช้แล้ว"

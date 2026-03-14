@@ -14,7 +14,7 @@ exports.router.post("/register", upload_1.upload.single("profile_image"), async 
         let { store_id, username, password, email, fullname, phone, } = req.body;
         store_id = store_id?.trim();
         username = username?.trim();
-        email = email?.trim().toLowerCase();
+        email = email?.trim();
         if (!username || !password || !email || !fullname || !phone) {
             return res.status(400).json({
                 ok: false,
@@ -33,13 +33,16 @@ exports.router.post("/register", upload_1.upload.single("profile_image"), async 
                 message: "username นี้ถูกใช้งานแล้ว",
             });
         }
-        const emailChecks = await Promise.all([
-            firebase_1.db.collection("riders").where("email", "==", email).limit(1).get(),
-            firebase_1.db.collection("stores").where("email", "==", email).limit(1).get(),
-            firebase_1.db.collection("customers").where("email", "==", email).limit(1).get(),
+        const [staffEmailCheck, customerEmailCheck, storeEmailCheck, riderEmailCheck] = await Promise.all([
             firebase_1.db.collection("laundry_staff").where("email", "==", email).limit(1).get(),
+            firebase_1.db.collection("customers").where("email", "==", email).limit(1).get(),
+            firebase_1.db.collection("stores").where("email", "==", email).limit(1).get(),
+            firebase_1.db.collection("riders").where("email", "==", email).limit(1).get(),
         ]);
-        if (emailChecks.some(check => !check.empty)) {
+        if (!staffEmailCheck.empty ||
+            !customerEmailCheck.empty ||
+            !storeEmailCheck.empty ||
+            !riderEmailCheck.empty) {
             return res.status(409).json({
                 ok: false,
                 message: "email ถูกใช้แล้ว",
@@ -188,28 +191,61 @@ exports.router.get("/:id", async (req, res) => {
 });
 exports.router.get("/store/:id", async (req, res) => {
     try {
-        const store_id = req.params.id;
-        const laundrysnap = await firebase_1.db
+        const storeId = req.params.id;
+        const storeRef = firebase_1.db.collection("stores").doc(storeId);
+        const snapshot = await firebase_1.db
             .collection("laundry_staff")
-            .where("store_id", "==", firebase_1.db.doc(`stores/${store_id}`))
+            .where("store_id", "==", storeRef)
             .get();
-        const list = [];
-        laundrysnap.forEach(doc => {
-            list.push({
+        const staffList = [];
+        snapshot.forEach((doc) => {
+            const data = doc.data();
+            const staff = {
                 staff_id: doc.id,
-                ...doc.data(),
-            });
+                ...data,
+            };
+            staffList.push(staff);
         });
         return res.json({
             ok: true,
-            total: list.length,
-            data: list,
+            total: staffList.length,
+            data: staffList,
         });
     }
-    catch (e) {
-        res.status(500).json({
+    catch (error) {
+        return res.status(500).json({
             ok: false,
             message: "Server error",
+        });
+    }
+});
+exports.router.delete("/delete/:id", async (req, res) => {
+    try {
+        const staff_id = req.params.id;
+        if (!staff_id) {
+            return res.status(400).json({
+                ok: false,
+                message: "ไม่พบ staff_id",
+            });
+        }
+        const staffRef = firebase_1.db.collection("laundry_staff").doc(staff_id);
+        const staffsnap = await staffRef.get();
+        if (!staffsnap.exists) {
+            return res.status(404).json({
+                ok: false,
+                message: "ไม่พบพนักงาน",
+            });
+        }
+        await staffRef.delete();
+        return res.json({
+            ok: true,
+            message: "ลบพนักงานซักอบสำเร็จ",
+        });
+    }
+    catch (err) {
+        return res.status(500).json({
+            ok: false,
+            message: err.message,
         });
     }
 });
