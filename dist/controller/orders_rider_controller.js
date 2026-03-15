@@ -64,12 +64,16 @@ exports.router.put("/update/status/:id", upload_1.upload.single("image"), async 
 exports.router.get("/:id", async (req, res) => {
     try {
         const rider_id = req.params.id;
-        const riderlat = parseFloat(req.query.lat);
-        const riderlng = parseFloat(req.query.lng);
-        const hasRiderLocation = !isNaN(riderlat) && !isNaN(riderlng);
+        const riderLat = parseFloat(req.query.lat);
+        const riderLng = parseFloat(req.query.lng);
+        const hasRiderLocation = !isNaN(riderLat) && !isNaN(riderLng);
         const riderRef = firebase_1.db.collection("riders").doc(rider_id);
-        const activeStatuses = ["picked_up", "pickup_completed", "delivering"];
-        const [pickupSnap, deliverySnap] = await Promise.all([
+        const activeStatuses = [
+            "picked_up",
+            "pickup_completed",
+            "delivering",
+        ];
+        const [pickupOrdersSnap, deliveryOrdersSnap] = await Promise.all([
             firebase_1.db.collection("orders")
                 .where("rider_pickup_id", "==", riderRef)
                 .where("status", "in", activeStatuses)
@@ -79,11 +83,11 @@ exports.router.get("/:id", async (req, res) => {
                 .where("status", "in", activeStatuses)
                 .get(),
         ]);
-        const pickupDocs = pickupSnap.docs;
-        const deliveryDocs = deliverySnap.docs;
-        const allDocs = pickupDocs.concat(deliveryDocs);
         const orderDocs = [];
-        for (const doc of allDocs) {
+        for (const doc of pickupOrdersSnap.docs) {
+            orderDocs.push(doc);
+        }
+        for (const doc of deliveryOrdersSnap.docs) {
             let alreadyExists = false;
             for (const savedDoc of orderDocs) {
                 if (savedDoc.id === doc.id) {
@@ -103,53 +107,188 @@ exports.router.get("/:id", async (req, res) => {
         }
         const orders = await Promise.all(orderDocs.map(async (orderDoc) => {
             const orderData = orderDoc.data();
-            const addressRef = orderData?.address_id;
-            const customerRef = orderData?.customer_id;
+            const addressRef = orderData.address_id ?? null;
+            const customerRef = orderData.customer_id ?? null;
             const [addressSnap, customerSnap] = await Promise.all([
-                addressRef ? addressRef.get() : Promise.resolve(null),
-                customerRef ? customerRef.get() : Promise.resolve(null),
+                addressRef ? addressRef.get() : null,
+                customerRef ? customerRef.get() : null,
             ]);
-            const addressData = addressSnap?.exists ? addressSnap.data() : null;
-            const customerData = customerSnap?.exists ? customerSnap.data() : null;
-            const addrLat = addressData?.latitude ?? null;
-            const addrLng = addressData?.longitude ?? null;
-            let distance = 0;
-            if (hasRiderLocation && addrLat !== null && addrLng !== null) {
-                distance = haversine_1.DistanceService.haversineKm(riderlat, riderlng, addrLat, addrLng);
+            let addressText = null;
+            let addressLat = null;
+            let addressLng = null;
+            if (addressSnap && addressSnap.exists) {
+                const addressData = addressSnap.data();
+                addressText = addressData?.address_text ?? null;
+                addressLat = addressData?.latitude ?? null;
+                addressLng = addressData?.longitude ?? null;
+            }
+            let customer = null;
+            if (customerSnap && customerSnap.exists) {
+                const customerData = customerSnap.data();
+                customer = {
+                    id: customerSnap.id,
+                    name: customerData?.fullname ?? null,
+                    phone: customerData?.phone ?? null,
+                    profile_image: customerData?.profile_image ?? null,
+                };
+            }
+            let distanceKm = 0;
+            if (hasRiderLocation && addressLat !== null && addressLng !== null) {
+                const distance = haversine_1.DistanceService.haversineKm(riderLat, riderLng, addressLat, addressLng);
+                distanceKm = Number(distance.toFixed(1));
+            }
+            let orderDatetime = null;
+            if (orderData.order_datetime) {
+                orderDatetime = {
+                    _seconds: orderData.order_datetime.seconds,
+                };
             }
             return {
                 id: orderDoc.id,
-                order_number: orderData?.order_number ?? null,
-                status: orderData?.status ?? null,
-                service_type: orderData?.service_type ?? null,
-                distance_km: Number(distance.toFixed(1)),
-                time_slot: orderData?.time_slot ?? null,
-                note: orderData?.note ?? null,
-                before_wash_image: orderData?.before_wash_image ?? null,
-                after_wash_image: orderData?.after_wash_image ?? null,
-                rider_pickup_id: orderData?.rider_pickup_id?.id ?? null,
-                rider_delivery_id: orderData?.rider_delivery_id?.id ?? null,
-                address_lat: addrLat,
-                address_lng: addrLng,
-                order_datetime: orderData?.order_datetime
-                    ? { _seconds: orderData.order_datetime.seconds }
+                order_number: orderData.order_number ?? null,
+                status: orderData.status ?? null,
+                service_type: orderData.service_type ?? null,
+                distance_km: distanceKm,
+                time_slot: orderData.time_slot ?? null,
+                note: orderData.note ?? null,
+                before_wash_image: orderData.before_wash_image ?? null,
+                after_wash_image: orderData.after_wash_image ?? null,
+                rider_pickup_id: orderData.rider_pickup_id
+                    ? orderData.rider_pickup_id.id
                     : null,
-                address: addressData?.address_text ?? null,
-                customer: customerData
-                    ? {
-                        id: customerSnap.id,
-                        name: customerData.fullname ?? null,
-                        phone: customerData.phone ?? null,
-                        profile_image: customerData.profile_image ?? null,
-                    }
+                rider_delivery_id: orderData.rider_delivery_id
+                    ? orderData.rider_delivery_id.id
                     : null,
+                address_lat: addressLat,
+                address_lng: addressLng,
+                order_datetime: orderDatetime,
+                address: addressText,
+                customer: customer,
             };
         }));
-        return res.json({ ok: true, data: orders });
+        return res.json({
+            ok: true,
+            data: orders,
+        });
     }
     catch (error) {
-        console.error(error);
-        return res.status(500).json({ ok: false, message: "server error" });
+        console.error("get rider orders error:", error);
+        return res.status(500).json({
+            ok: false,
+            message: "server error",
+        });
+    }
+});
+exports.router.get("/detail/:id", async (req, res) => {
+    try {
+        const order_id = req.params.id;
+        const orderSnap = await firebase_1.db.collection("orders").doc(order_id).get();
+        if (!orderSnap.exists) {
+            return res.status(404).json({
+                ok: false,
+                message: "ไม่พบคำสั่งซื้อ",
+            });
+        }
+        const orderData = orderSnap.data();
+        const customerRef = orderData.customer_id ?? null;
+        const addressRef = orderData.address_id ?? null;
+        const staffRef = orderData.staff_id ?? null;
+        const riderPickupRef = orderData.rider_pickup_id ?? null;
+        const riderDeliveryRef = orderData.rider_delivery_id ?? null;
+        const [customerSnap, addressSnap, staffSnap, riderPickupSnap, riderDeliverySnap,] = await Promise.all([
+            customerRef ? customerRef.get() : Promise.resolve(null),
+            addressRef ? addressRef.get() : Promise.resolve(null),
+            staffRef ? staffRef.get() : Promise.resolve(null),
+            riderPickupRef ? riderPickupRef.get() : Promise.resolve(null),
+            riderDeliveryRef ? riderDeliveryRef.get() : Promise.resolve(null),
+        ]);
+        let customer = null;
+        if (customerSnap && customerSnap.exists) {
+            const customerData = customerSnap.data();
+            customer = {
+                customer_id: customerSnap.id,
+                username: customerData.username,
+                fullname: customerData.fullname,
+                profile_image: customerData.profile_image,
+                phone: customerData.phone,
+            };
+        }
+        let address = null;
+        if (addressSnap && addressSnap.exists) {
+            const addressData = addressSnap.data();
+            address = {
+                address_text: addressData.address_text,
+                latitude: addressData.latitude,
+                longitude: addressData.longitude,
+            };
+        }
+        let staff = null;
+        if (staffSnap && staffSnap.exists) {
+            const staffData = staffSnap.data();
+            staff = {
+                fullname: staffData.fullname,
+                phone: staffData.phone,
+                profile_image: staffData.profile_image,
+            };
+        }
+        let rider_pickup = null;
+        if (riderPickupSnap && riderPickupSnap.exists) {
+            const riderPickupData = riderPickupSnap.data();
+            rider_pickup = {
+                fullname: riderPickupData.fullname,
+                phone: riderPickupData.phone,
+                vehicle_type: riderPickupData.vehicle_type,
+                license_plate: riderPickupData.license_plate,
+                profile_image: riderPickupData.profile_image,
+            };
+        }
+        let rider_delivery = null;
+        if (riderDeliverySnap && riderDeliverySnap.exists) {
+            const riderDeliveryData = riderDeliverySnap.data();
+            rider_delivery = {
+                fullname: riderDeliveryData.fullname,
+                phone: riderDeliveryData.phone,
+                vehicle_type: riderDeliveryData.vehicle_type,
+                license_plate: riderDeliveryData.license_plate,
+                profile_image: riderDeliveryData.profile_image,
+            };
+        }
+        return res.json({
+            ok: true,
+            data: {
+                order_id: orderSnap.id,
+                customer_id: orderData.customer_id?.id ?? null,
+                address_id: orderData.address_id?.id ?? null,
+                store_id: orderData.store_id?.id ?? null,
+                rider_pickup_id: orderData.rider_pickup_id?.id ?? null,
+                rider_delivery_id: orderData.rider_delivery_id?.id ?? null,
+                machine_washer_id: orderData.machine_washer_id?.id ?? null,
+                machine_dryer_id: orderData.machine_dryer_id?.id ?? null,
+                staff_id: orderData.staff_id?.id ?? null,
+                service_type: orderData.service_type,
+                wash_dry_weight: orderData.wash_dry_weight,
+                service_price: orderData.service_price,
+                delivery_price: orderData.delivery_price,
+                detergent_option: orderData.detergent_option,
+                before_wash_image: orderData.before_wash_image,
+                after_wash_image: orderData.after_wash_image,
+                note: orderData.note,
+                status: orderData.status,
+                order_datetime: orderData.order_datetime,
+                customer: customer,
+                address: address,
+                staff: staff,
+                rider_pickup: rider_pickup,
+                rider_delivery: rider_delivery,
+            },
+        });
+    }
+    catch (error) {
+        console.error("get order detail error:", error);
+        return res.status(500).json({
+            ok: false,
+            message: "เกิดข้อผิดพลาดในระบบ",
+        });
     }
 });
 exports.router.post("/accept/:id", async (req, res) => {
@@ -159,28 +298,27 @@ exports.router.post("/accept/:id", async (req, res) => {
         if (!rider_id) {
             return res.status(400).json({ ok: false, message: "กรุณาระบุ rider_id" });
         }
-        const firestore = firebase_1.db;
-        const riderRef = firestore.collection("riders").doc(rider_id);
-        const MAX_ORDERS = 3;
+        const riderRef = firebase_1.db.collection("riders").doc(rider_id);
+        const max_order = 3;
         const [pickupSnap, deliverySnap] = await Promise.all([
-            firestore.collection("orders")
+            firebase_1.db.collection("orders")
                 .where("rider_pickup_id", "==", riderRef)
                 .where("status", "==", "picked_up")
                 .get(),
-            firestore.collection("orders")
+            firebase_1.db.collection("orders")
                 .where("rider_delivery_id", "==", riderRef)
                 .where("status", "==", "delivering")
                 .get(),
         ]);
         const totalActive = pickupSnap.size + deliverySnap.size;
-        if (totalActive >= MAX_ORDERS) {
+        if (totalActive >= max_order) {
             return res.status(400).json({
                 ok: false,
-                message: `คุณรับงานครบ ${MAX_ORDERS} งานแล้ว กรุณาจบงานก่อนรับงานใหม่`,
+                message: `คุณรับงานครบ ${max_order} งานแล้ว กรุณาจบงานก่อนรับงานใหม่`,
             });
         }
-        const orderRef = firestore.collection("orders").doc(order_id);
-        await firestore.runTransaction(async (tx) => {
+        const orderRef = firebase_1.db.collection("orders").doc(order_id);
+        await firebase_1.db.runTransaction(async (tx) => {
             const snap = await tx.get(orderRef);
             if (!snap.exists)
                 throw new Error("ไม่พบออเดอร์นี้");
@@ -207,7 +345,7 @@ exports.router.post("/accept/:id", async (req, res) => {
         });
         return res.json({
             ok: true,
-            message: `รับงานสำเร็จ! (งานที่ ${totalActive + 1}/${MAX_ORDERS})`,
+            message: `รับงานสำเร็จ! (งานที่ ${totalActive + 1}/${max_order})`,
         });
     }
     catch (error) {

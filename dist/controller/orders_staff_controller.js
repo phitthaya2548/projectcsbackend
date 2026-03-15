@@ -419,3 +419,87 @@ exports.router.get("/calculate/preview/:id", async (req, res) => {
         return res.status(500).json({ ok: false, message: err.message ?? "server error" });
     }
 });
+exports.router.get("/detail/:id", async (req, res) => {
+    try {
+        const order_id = req.params.id;
+        const orderSnap = await firebase_1.db.collection("orders").doc(order_id).get();
+        if (!orderSnap.exists) {
+            return res.status(404).json({
+                ok: false,
+                message: "ไม่พบคำสั่งซื้อ",
+            });
+        }
+        const orderData = orderSnap.data();
+        const customerRef = orderData.customer_id ?? null;
+        const addressRef = orderData.address_id ?? null;
+        const riderPickupRef = orderData.rider_pickup_id ?? null;
+        const [customerSnap, addressSnap, riderPickupSnap,] = await Promise.all([
+            customerRef ? customerRef.get() : Promise.resolve(null),
+            addressRef ? addressRef.get() : Promise.resolve(null),
+            riderPickupRef ? riderPickupRef.get() : Promise.resolve(null),
+        ]);
+        let customer = null;
+        if (customerSnap && customerSnap.exists) {
+            const customerData = customerSnap.data();
+            customer = {
+                customer_id: customerSnap.id,
+                username: customerData.username,
+                fullname: customerData.fullname,
+                profile_image: customerData.profile_image,
+                phone: customerData.phone,
+            };
+        }
+        let address = null;
+        if (addressSnap && addressSnap.exists) {
+            const addressData = addressSnap.data();
+            address = {
+                address_text: addressData.address_text,
+            };
+        }
+        let rider_pickup = null;
+        if (riderPickupSnap && riderPickupSnap.exists) {
+            const riderPickupData = riderPickupSnap.data();
+            rider_pickup = {
+                fullname: riderPickupData.fullname,
+                phone: riderPickupData.phone,
+                vehicle_type: riderPickupData.vehicle_type,
+                license_plate: riderPickupData.license_plate,
+                profile_image: riderPickupData.profile_image,
+            };
+        }
+        return res.json({
+            ok: true,
+            data: {
+                order_id: orderSnap.id,
+                customer_id: orderData.customer_id?.id ?? null,
+                address_id: orderData.address_id?.id ?? null,
+                store_id: orderData.store_id?.id ?? null,
+                rider_pickup_id: orderData.rider_pickup_id?.id ?? null,
+                rider_delivery_id: orderData.rider_delivery_id?.id ?? null,
+                machine_washer_id: orderData.machine_washer_id?.id ?? null,
+                machine_dryer_id: orderData.machine_dryer_id?.id ?? null,
+                staff_id: orderData.staff_id?.id ?? null,
+                service_type: orderData.service_type,
+                wash_dry_weight: orderData.wash_dry_weight,
+                service_price: orderData.service_price,
+                delivery_price: orderData.delivery_price,
+                detergent_option: orderData.detergent_option,
+                before_wash_image: orderData.before_wash_image,
+                after_wash_image: orderData.after_wash_image,
+                note: orderData.note,
+                status: orderData.status,
+                order_datetime: orderData.order_datetime,
+                customer: customer,
+                address: address,
+                rider_pickup: rider_pickup,
+            },
+        });
+    }
+    catch (error) {
+        console.error("get order detail error:", error);
+        return res.status(500).json({
+            ok: false,
+            message: "เกิดข้อผิดพลาดในระบบ",
+        });
+    }
+});

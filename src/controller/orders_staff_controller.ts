@@ -8,6 +8,8 @@ import { Order, OrderStatus } from "../modules/order";
 
 import { DistanceService } from "../services/haversine";
 import { DeliveryService } from "../services/calculateDelivery";
+import { CustomerData } from "../modules/customer";
+import { Rider } from "../modules/rider";
 
 export const router = Router();
 router.put("/start_wash/:id", async (req, res) => {
@@ -105,43 +107,43 @@ router.get("/historynow/:id", async (req, res) => {
       return res.json({ ok: true, data: [] });
     }
 
-  const orders = await Promise.all(
-  ordersSnap.docs.map(async (doc) => {
-    const order = doc.data() as Order;
+    const orders = await Promise.all(
+      ordersSnap.docs.map(async (doc) => {
+        const order = doc.data() as Order;
 
-    const [storeSnap, addressSnap, customerSnap, washerSnap, dryerSnap] =
-      await Promise.all([
-        order.store_id ? order.store_id.get() : null,
-        order.address_id ? order.address_id.get() : null,
-        order.customer_id ? order.customer_id.get() : null,
-        order.machine_washer_id ? order.machine_washer_id.get() : null,
-        order.machine_dryer_id ? order.machine_dryer_id.get() : null,
-      ]);
+        const [storeSnap, addressSnap, customerSnap, washerSnap, dryerSnap] =
+          await Promise.all([
+            order.store_id ? order.store_id.get() : null,
+            order.address_id ? order.address_id.get() : null,
+            order.customer_id ? order.customer_id.get() : null,
+            order.machine_washer_id ? order.machine_washer_id.get() : null,
+            order.machine_dryer_id ? order.machine_dryer_id.get() : null,
+          ]);
 
-    let storeData = null;
-    if (storeSnap && storeSnap.exists) {
-      storeData = storeSnap.data();
-    }
+        let storeData = null;
+        if (storeSnap && storeSnap.exists) {
+          storeData = storeSnap.data();
+        }
 
-    let addressData = null;
-    if (addressSnap && addressSnap.exists) {
-      addressData = addressSnap.data();
-    }
+        let addressData = null;
+        if (addressSnap && addressSnap.exists) {
+          addressData = addressSnap.data();
+        }
 
-    let customerData = null;
-    if (customerSnap && customerSnap.exists) {
-      customerData = customerSnap.data();
-    }
+        let customerData = null;
+        if (customerSnap && customerSnap.exists) {
+          customerData = customerSnap.data();
+        }
 
-    let washerData = null;
-    if (washerSnap && washerSnap.exists) {
-      washerData = washerSnap.data();
-    }
+        let washerData = null;
+        if (washerSnap && washerSnap.exists) {
+          washerData = washerSnap.data();
+        }
 
-    let dryerData = null;
-    if (dryerSnap && dryerSnap.exists) {
-      dryerData = dryerSnap.data();
-    }
+        let dryerData = null;
+        if (dryerSnap && dryerSnap.exists) {
+          dryerData = dryerSnap.data();
+        }
 
         return {
           id: doc.id,
@@ -173,31 +175,31 @@ router.get("/historynow/:id", async (req, res) => {
 
           customer: customerData
             ? {
-                id: customerSnap!.id,
-                name: customerData.fullname ?? null,
-                phone: customerData.phone ?? null,
-                profile_image: customerData.profile_image ?? null,
-              }
+              id: customerSnap!.id,
+              name: customerData.fullname ?? null,
+              phone: customerData.phone ?? null,
+              profile_image: customerData.profile_image ?? null,
+            }
             : null,
 
           washer: washerData
             ? {
-                id: washerSnap!.id,
-                name: washerData.name ?? null,
-                capacity: washerData.capacity ?? null,
-                work_minutes: washerData.work_minutes ?? null,
-                status: washerData.status ?? null,
-              }
+              id: washerSnap!.id,
+              name: washerData.name ?? null,
+              capacity: washerData.capacity ?? null,
+              work_minutes: washerData.work_minutes ?? null,
+              status: washerData.status ?? null,
+            }
             : null,
 
           dryer: dryerData
             ? {
-                id: dryerSnap!.id,
-                name: dryerData.name ?? null,
-                capacity: dryerData.capacity ?? null,
-                work_minutes: dryerData.work_minutes ?? null,
-                status: dryerData.status ?? null,
-              }
+              id: dryerSnap!.id,
+              name: dryerData.name ?? null,
+              capacity: dryerData.capacity ?? null,
+              work_minutes: dryerData.work_minutes ?? null,
+              status: dryerData.status ?? null,
+            }
             : null,
         };
       })
@@ -382,14 +384,14 @@ router.put("/calculate/:id", async (req, res) => {
       const orderDoc = await tx.get(orderRef);
       const orderData = orderDoc.data() as Order;
 
-     const customerRef = orderData.customer_id;
+      const customerRef = orderData.customer_id;
 
-if (!customerRef) {
-  throw new Error("ไม่พบ customer");
-}
+      if (!customerRef) {
+        throw new Error("ไม่พบ customer");
+      }
 
-const customerSnap = await tx.get(customerRef);
-const wallet = customerSnap.data()?.wallet_balance ?? 0;
+      const customerSnap = await tx.get(customerRef);
+      const wallet = customerSnap.data()?.wallet_balance ?? 0;
 
 
       const nextStatus: OrderStatus =
@@ -479,9 +481,8 @@ router.get("/calculate/preview/:id", async (req, res) => {
     if (order.staff_id?.id !== staff_id)
       return res.status(403).json({ ok: false, message: "คุณไม่ใช่ staff ที่รับงานนี้" });
 
-
-    const addressRef = order.address_id as FirebaseFirestore.DocumentReference;
-    const storeRef = order.store_id as FirebaseFirestore.DocumentReference;
+    const addressRef = order.address_id;
+    const storeRef = order.store_id;
 
     const [addressSnap, storeSnap] = await Promise.all([
       addressRef.get(),
@@ -493,9 +494,6 @@ router.get("/calculate/preview/:id", async (req, res) => {
 
     const addressData = addressSnap.data() as CustomerAddress;
     const storeData = storeSnap.data() as StoreData;
-
-
-
 
     let delivery_price = 0;
     let distanceKm = 0;
@@ -518,11 +516,11 @@ router.get("/calculate/preview/:id", async (req, res) => {
         });
 
       delivery_price = DeliveryService.calculateDeliveryFee(
-  distanceKm,
-  serviceRadius,
-  deliveryMin,
-  deliveryMax
-);
+        distanceKm,
+        serviceRadius,
+        deliveryMin,
+        deliveryMax
+      );
     }
     const updateData: Partial<Order> = {
       delivery_price: delivery_price,
@@ -540,5 +538,100 @@ router.get("/calculate/preview/:id", async (req, res) => {
   } catch (err: any) {
     console.error(err);
     return res.status(500).json({ ok: false, message: err.message ?? "server error" });
+  }
+});
+router.get("/detail/:id", async (req, res) => {
+  try {
+    const order_id = req.params.id as string;
+
+    const orderSnap = await db.collection("orders").doc(order_id).get();
+
+    if (!orderSnap.exists) {
+      return res.status(404).json({
+        ok: false,
+        message: "ไม่พบคำสั่งซื้อ",
+      });
+    }
+
+    const orderData = orderSnap.data() as Order;
+
+    const customerRef = orderData.customer_id ?? null;
+    const addressRef = orderData.address_id ?? null;
+    const riderPickupRef = orderData.rider_pickup_id ?? null;
+
+    const [
+      customerSnap,
+      addressSnap,
+      riderPickupSnap,
+    ] = await Promise.all([
+      customerRef ? customerRef.get() : Promise.resolve(null),
+      addressRef ? addressRef.get() : Promise.resolve(null),
+      riderPickupRef ? riderPickupRef.get() : Promise.resolve(null),
+    ]);
+
+    let customer = null;
+    if (customerSnap && customerSnap.exists) {
+      const customerData = customerSnap.data() as CustomerData;
+      customer = {
+        customer_id: customerSnap.id,
+        username: customerData.username,
+        fullname: customerData.fullname,
+        profile_image: customerData.profile_image,
+        phone: customerData.phone,
+      };
+    }
+
+    let address = null;
+if (addressSnap && addressSnap.exists) {
+  const addressData = addressSnap.data() as CustomerAddress;
+  address = {
+    address_text: addressData.address_text,
+  };
+}
+
+    let rider_pickup = null;
+    if (riderPickupSnap && riderPickupSnap.exists) {
+      const riderPickupData = riderPickupSnap.data() as Rider;
+      rider_pickup = {
+        fullname: riderPickupData.fullname,
+        phone: riderPickupData.phone,
+        vehicle_type: riderPickupData.vehicle_type,
+        license_plate: riderPickupData.license_plate,
+        profile_image: riderPickupData.profile_image,
+      };
+    }
+    return res.json({
+      ok: true,
+      data: {
+        order_id: orderSnap.id,
+        customer_id: orderData.customer_id?.id ?? null,
+        address_id: orderData.address_id?.id ?? null,
+        store_id: orderData.store_id?.id ?? null,
+        rider_pickup_id: orderData.rider_pickup_id?.id ?? null,
+        rider_delivery_id: orderData.rider_delivery_id?.id ?? null,
+        machine_washer_id: orderData.machine_washer_id?.id ?? null,
+        machine_dryer_id: orderData.machine_dryer_id?.id ?? null,
+        staff_id: orderData.staff_id?.id ?? null,
+        service_type: orderData.service_type,
+        wash_dry_weight: orderData.wash_dry_weight,
+        service_price: orderData.service_price,
+        delivery_price: orderData.delivery_price,
+        detergent_option: orderData.detergent_option,
+        before_wash_image: orderData.before_wash_image,
+        after_wash_image: orderData.after_wash_image,
+        note: orderData.note,
+        status: orderData.status,
+        order_datetime: orderData.order_datetime,
+        customer: customer,
+        address: address,
+        rider_pickup: rider_pickup,
+      },
+    });
+  } catch (error) {
+    console.error("get order detail error:", error);
+    return res.status(500).json({
+      ok: false,
+      message: "เกิดข้อผิดพลาดในระบบ",
+    });
   }
 });

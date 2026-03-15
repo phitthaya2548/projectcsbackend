@@ -1,19 +1,10 @@
 import  { Router } from "express";
 import { db, } from "../config/firebase";
-
 import { Timestamp } from "firebase-admin/firestore";
-import { DETERGENT_OPTIONS, Order, OrderStatus, ServiceType } from "../modules/order";
+import {  Order, OrderStatus} from "../modules/order";
 import { DistanceService } from "../services/haversine";
 
-
-
 export const router = Router();
-
-
-
-
-
-
 
 router.post("/create", async (req, res) => {
   try {
