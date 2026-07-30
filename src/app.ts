@@ -1,0 +1,57 @@
+import express from "express";
+import "dotenv/config";
+import { router as register_customer } from "./controller/register_customer_controller";
+import { router as register_store } from "./controller/register_store_controller";
+import { router as login } from "./controller/auth_controller";
+import { router as customer } from "./controller/customer_controller";
+import { router as slipok } from "./controller/wallet_controller";
+import { router as rider } from "./controller/rider_controller";
+import { router as store } from "./controller/store_controller";
+import { router as laundryStaff } from "./controller/staff_contorller";
+import { router as orders } from "./controller/orders_controller";
+import { router as ordersRider } from "./controller/orders_rider_controller";
+import { router as ordersStaff } from "./controller/orders_staff_controller";
+import { router as resetpassword } from "./controller/password_controller";
+import { router as employeeregister_store} from "./controller/employee_register_store_controller"
+import { router as report } from "./controller/report_store_controller"
+import { router as history_order_cus} from "./controller/history_order_store_controller"
+export const app = express();
+
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true }));
+
+app.use((req, res, next) => {
+  console.log(req.method, req.url);
+  next();
+});
+
+app.use("", login);
+app.use("/register/customer", register_customer);
+app.use("/register/store", register_store);
+app.use("/customer", customer);
+app.use("/store", store);
+app.use("/rider", rider);
+app.use("/laundry_staff", laundryStaff);
+app.use("/wallet", slipok);
+app.use("/report",report);
+app.use("/order/rider", ordersRider);
+app.use("/order/staff", ordersStaff);
+app.use("/order", orders);
+app.use("/history/order",history_order_cus);
+app.use("/employee_regis_store",employeeregister_store);
+app.use("/password", resetpassword);
+
+app.use((_req, res) => {
+  res.status(404).json({
+    ok: false,
+    message: "Not found",
+  });
+});
+
+app.use((err: any, _req: any, res: any, _next: any) => {
+  console.error(err);
+  res.status(500).json({
+    ok: false,
+    message: "Internal Server Error",
+  });
+});

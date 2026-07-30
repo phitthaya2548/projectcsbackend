@@ -1,0 +1,35 @@
+
+export type StoreStatus = "OPEN" | "TEMP_CLOSED";
+
+export const StoreStatus: StoreStatus[] = [
+  "OPEN",
+  "TEMP_CLOSED",
+];export type StoreData = {
+  store_id: string;
+  username: string;
+  password: string;
+
+  store_name: string;
+  phone: string;
+  email: string;
+
+  facebook: string;
+  line_id: string;
+
+  address: string;
+
+  opening_hours: string;
+  closed_hours: string;
+
+  status: StoreStatus;
+
+  service_radius: number;
+  latitude: number;
+  longitude: number;
+is_hiring: boolean;
+  profile_image: string;
+  delivery_min: number;
+  delivery_max: number;
+  wallet_balance: number;
+  detergent_price: number;
+};

@@ -1,0 +1,53 @@
+import { Timestamp } from "firebase-admin/firestore";
+export type OrderStatus =
+    "pending_confirmation" // รอยืนยันคำสั่งซื้อ
+  | "waiting_pickup"         // รอรับผ้า
+  | "pickup_in_progress"     // กำลังรับผ้า
+  | "pickup_completed"       // รับผ้าแล้วกำลังไปที่ร้าน
+  | "waiting_payment"        // รอชำระเงิน
+  | "payment_completed"      // ชำระเงินแล้ว
+  | "waiting_wash"           // รอซัก
+  | "washing"                  // กำลังซัก
+  | "waiting_dry"             // รออบ
+  | "drying"                 // กำลังอบ
+  | "waiting_delivery"       //รอส่ง
+  | "delivery_heading_to_shop" // กำลังไปที่ร้าน
+| "delivery_pickup_completed"    // รับผ้าที่ร้านแล้ว
+    | "delivery_in_progress"   // กำลังจัดส่ง
+  | "completed"              // ส่งถึงลูกค้าแล้ว
+  | "cancelled";
+
+
+export type ServiceType =
+  | "wash"
+  | "dry"
+  | "wash_dry";
+
+export type DETERGENT_OPTIONS =
+  | "no_detergent"
+  | "detergent";
+
+export interface Order {
+  order_id: string;
+
+  customer_id: FirebaseFirestore.DocumentReference | null;
+  address_id: FirebaseFirestore.DocumentReference | null;
+  store_id: FirebaseFirestore.DocumentReference | null;
+  rider_pickup_id: FirebaseFirestore.DocumentReference | null;
+  rider_delivery_id: FirebaseFirestore.DocumentReference | null;
+  machine_washer_id: FirebaseFirestore.DocumentReference | null;
+  machine_dryer_id: FirebaseFirestore.DocumentReference | null;
+  staff_id: FirebaseFirestore.DocumentReference | null;
+  service_type: ServiceType;
+  wash_dry_weight: number | null;
+  service_price: number;
+  delivery_price: number;
+  detergent_option: DETERGENT_OPTIONS | null;
+  before_wash_image: string | null;
+  after_wash_image: string | null;
+  note: string | null;
+
+  status: OrderStatus;
+
+  order_datetime: Timestamp;
+}
