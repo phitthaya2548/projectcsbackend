@@ -16,6 +16,8 @@ import { router as applicant_store} from "./controller/applicant_store_controlle
 import { router as report } from "./controller/report_store_controller"
 import { router as history_order_cus} from "./controller/history_order_store_controller"
 import { router as notification } from "./controller/notification_controller"
+import dns from "dns";
+dns.setDefaultResultOrder("ipv4first");
 export const app = express();
 
 app.use(express.json({ limit: "1mb" }));
