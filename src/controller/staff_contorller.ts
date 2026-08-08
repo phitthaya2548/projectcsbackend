@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db, bucket } from "../config/firebase";
 import { upload } from "../middlewares/upload";
 import bcrypt from "bcrypt";
-import { LaundryStaff } from "../modules/LaundryStaff";
+import { LaundryStaff, StaffStatus } from "../modules/LaundryStaff";
 
 
 export const router = Router();
@@ -92,7 +92,7 @@ router.post("/register", upload.single("profile_image"), async (req, res) => {
       fullname,
       phone,
       profile_image: imageUrl,
-      status: "ใช้งาน",
+      status: "TEMP_CLOSED" as StaffStatus,
     };
 
     await laundryRef.set(staff);

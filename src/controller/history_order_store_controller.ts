@@ -4,7 +4,7 @@ import { db } from "../config/firebase";
 export const router = Router();
 router.get("/customers/:id", async (req, res) => {
   try {
-    const storeId = req.params.id as string;
+    const storeId = req.params.id ;
     const search = (req.query.q as string || "").trim().toLowerCase();
 
     const storeRef = db.collection("stores").doc(storeId);
@@ -56,7 +56,7 @@ router.get("/customers/:id", async (req, res) => {
         };
       });
 
-    // ค้นหาจากชื่อ, เบอร์โทร, หรืออีเมล (filter ฝั่งแอปเพราะ Firestore ค้นหาแบบ substring ไม่ได้)
+    
     if (search) {
       customers = customers.filter((c) => {
         const fullname = c.fullname.toLowerCase();

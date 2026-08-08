@@ -124,7 +124,7 @@ router.get("/store/:id/applicants", async (req, res) => {
       });
     }
 
-    // ดึงทั้งไรเดอร์และพนักงานที่ผูกร้านนี้ไว้และสถานะยัง pending
+    
     const [ridersSnap, staffSnap] = await Promise.all([
       db
         .collection("riders")
@@ -183,47 +183,67 @@ router.get("/store/:id/applicants", async (req, res) => {
 router.put("/rider/store/:id", async (req, res) => {
   try {
     const riderId = req.params.id;
-    const { store_id } = req.body as { store_id?: string };
+    const { store_id } = req.body;
 
     if (isBlank(store_id)) {
       return res.status(400).json({ ok: false, message: "กรุณาระบุ store_id" });
     }
 
     const riderRef = db.collection("riders").doc(riderId);
+    
     const riderSnap = await riderRef.get();
 
     if (!riderSnap.exists) {
       return res.status(404).json({ ok: false, message: "ไม่พบไรเดอร์" });
     }
-
+    
     const riderData = riderSnap.data();
-    const targetStoreId = store_id!.trim();
+    const targetStoreId = (store_id as string).trim();
 
  
-    if (riderData?.status) {
-      const currentStoreId = riderData?.store_id?.id;
+    if (riderData?.store_id) {
+  const currentStoreId = riderData.store_id.id;
 
-      if (riderData.status === "pending" && currentStoreId === targetStoreId) {
-        return res.status(409).json({
-          ok: false,
-          message: "คุณสมัครร้านนี้ไปแล้ว กรุณารอร้านค้ายืนยัน",
-        });
-      }
+  if (riderData.status === "pending" && currentStoreId === targetStoreId) {
+    return res.status(409).json({
+      ok: false,
+      message: "คุณสมัครร้านนี้ไปแล้ว กรุณารอร้านค้ายืนยัน",
+    });
+  }
 
-      if (riderData.status === "pending") {
-        return res.status(409).json({
-          ok: false,
-          message: "คุณมีคำขอสมัครร้านค้าอื่นที่รอการยืนยันอยู่แล้ว กรุณายกเลิกก่อนสมัครใหม่",
-        });
-      }
+  if (riderData.status === "pending") {
+    return res.status(409).json({
+      ok: false,
+      message: "คุณมีคำขอสมัครร้านค้าอื่นที่รอการยืนยันอยู่แล้ว กรุณายกเลิกก่อนสมัครใหม่",
+    });
+  }
 
+  return res.status(409).json({
+    ok: false,
+    message: "คุณสังกัดร้านค้าอยู่แล้ว ไม่สามารถสมัครร้านใหม่ได้",
+  });
+}if (riderData?.store_id) {
+  const currentStoreId = riderData.store_id.id;
 
-      return res.status(409).json({
-        ok: false,
-        message: "คุณสังกัดร้านค้าอยู่แล้ว ไม่สามารถสมัครร้านใหม่ได้",
-      });
-    }
+  if (riderData.status === "pending" && currentStoreId === targetStoreId) {
+    return res.status(409).json({
+      ok: false,
+      message: "คุณสมัครร้านนี้ไปแล้ว กรุณารอร้านค้ายืนยัน",
+    });
+  }
 
+  if (riderData.status === "pending") {
+    return res.status(409).json({
+      ok: false,
+      message: "คุณมีคำขอสมัครร้านค้าอื่นที่รอการยืนยันอยู่แล้ว กรุณายกเลิกก่อนสมัครใหม่",
+    });
+  }
+
+  return res.status(409).json({
+    ok: false,
+    message: "คุณสังกัดร้านค้าอยู่แล้ว ไม่สามารถสมัครร้านใหม่ได้",
+  });
+}
     const storeRef = db.collection("stores").doc(targetStoreId);
     const storeSnap = await storeRef.get();
 
@@ -242,7 +262,7 @@ router.put("/rider/store/:id", async (req, res) => {
     await riderRef.update({
       store_id: storeRef,
       status: "pending",
-      updated_at: new Date(),
+
     });
 
     return res.json({
@@ -263,7 +283,7 @@ router.put("/rider/store/:id", async (req, res) => {
 router.put("/staff/store/:id", async (req, res) => {
   try {
     const staffId = req.params.id;
-    const { store_id } = req.body as { store_id?: string };
+    const { store_id } = req.body ;
 
     if (isBlank(store_id)) {
       return res.status(400).json({
@@ -283,32 +303,31 @@ router.put("/staff/store/:id", async (req, res) => {
     }
 
     const staffData = staffSnap.data();
-    const targetStoreId = store_id!.trim();
+     const targetStoreId = (store_id as string).trim();
 
-    // เช็คไม่ให้สมัครซ้ำ
-    if (staffData?.status) {
-      const currentStoreId = staffData?.store_id?.id;
+    
+    if (staffData?.store_id) {
+  const currentStoreId = staffData.store_id.id;
 
-      if (staffData.status === "pending" && currentStoreId === targetStoreId) {
-        return res.status(409).json({
-          ok: false,
-          message: "คุณสมัครร้านนี้ไปแล้ว กรุณารอร้านค้ายืนยัน",
-        });
-      }
+  if (staffData.status === "pending" && currentStoreId === targetStoreId) {
+    return res.status(409).json({
+      ok: false,
+      message: "คุณสมัครร้านนี้ไปแล้ว กรุณารอร้านค้ายืนยัน",
+    });
+  }
 
-      if (staffData.status === "pending") {
-        return res.status(409).json({
-          ok: false,
-          message: "คุณมีคำขอสมัครร้านค้าอื่นที่รอการยืนยันอยู่แล้ว กรุณายกเลิกก่อนสมัครใหม่",
-        });
-      }
+  if (staffData.status === "pending") {
+    return res.status(409).json({
+      ok: false,
+      message: "คุณมีคำขอสมัครร้านค้าอื่นที่รอการยืนยันอยู่แล้ว กรุณายกเลิกก่อนสมัครใหม่",
+    });
+  }
 
-
-      return res.status(409).json({
-        ok: false,
-        message: "คุณสังกัดร้านค้าอยู่แล้ว ไม่สามารถสมัครร้านใหม่ได้",
-      });
-    }
+  return res.status(409).json({
+    ok: false,
+    message: "คุณสังกัดร้านค้าอยู่แล้ว ไม่สามารถสมัครร้านใหม่ได้",
+  });
+}
   
     const storeRef = db.collection("stores").doc(targetStoreId);
     const storeSnap = await storeRef.get();
@@ -320,7 +339,7 @@ router.put("/staff/store/:id", async (req, res) => {
       });
     }
 
-    // เช็คว่าร้านเปิดรับสมัครอยู่หรือไม่
+    
     const storeData = storeSnap.data();
     if (storeData?.is_hiring === false) {
       return res.status(400).json({
@@ -329,11 +348,10 @@ router.put("/staff/store/:id", async (req, res) => {
       });
     }
 
-    // สมัครแล้วรอร้านค้ายืนยัน ไม่ผูกเป็นสมาชิกทันที
+    
     await staffRef.update({
       store_id: storeRef,
       status: "pending", 
-      updated_at: new Date(),
     });
 
     return res.json({

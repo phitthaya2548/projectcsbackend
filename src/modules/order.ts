@@ -6,6 +6,7 @@ export type OrderStatus =
   | "pickup_completed"       // รับผ้าแล้วกำลังไปที่ร้าน
   | "waiting_payment"        // รอชำระเงิน
   | "payment_completed"      // ชำระเงินแล้ว
+  | "waiting_machine"          // รอเครื่องซัก/อบ
   | "waiting_wash"           // รอซัก
   | "washing"                  // กำลังซัก
   | "waiting_dry"             // รออบ
@@ -14,7 +15,7 @@ export type OrderStatus =
   | "delivery_heading_to_shop" // กำลังไปที่ร้าน
 | "delivery_pickup_completed"    // รับผ้าที่ร้านแล้ว
     | "delivery_in_progress"   // กำลังจัดส่ง
-  | "completed"              // ส่งถึงลูกค้าแล้ว
+  | "completedcompleted"              // ส่งถึงลูกค้าแล้ว
   | "cancelled";
 
 
@@ -46,7 +47,7 @@ export interface Order {
   before_wash_image: string | null;
   after_wash_image: string | null;
   note: string | null;
-
+  detergent_price: number | null;
   status: OrderStatus;
 
   order_datetime: Timestamp;

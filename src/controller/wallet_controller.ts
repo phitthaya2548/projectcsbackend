@@ -5,6 +5,7 @@ import FormData from "form-data";
 import { db, FieldValue } from "../config/firebase";
 import { Timestamp } from "firebase-admin/firestore";
 import { TopupHistory } from "../modules/topup_history";
+import { Order } from "../modules/order";
 
 export const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -115,12 +116,12 @@ router.post("/checkslip", upload.single("file"), async (req, res) => {
       topup_datetime: Timestamp.now(),
     };
 
-    // These get filled in inside the transaction and used in the response below.
+
     let walletBalanceAfter = 0;
     const paidOrderIds: string[] = [];
 
     await db.runTransaction(async (tx) => {
-      // --- ALL READS FIRST (Firestore transactions forbid reads after writes) ---
+
 
       const customerDoc = await tx.get(customerRef);
       if (!customerDoc.exists) {
@@ -128,8 +129,6 @@ router.post("/checkslip", upload.single("file"), async (req, res) => {
       }
       const currentBalance = Number(customerDoc.data()?.wallet_balance || 0);
 
-      // หายอดค้างชำระ (orders ที่ status = waiting_payment ของลูกค้าคนนี้)
-      // เรียงจากเก่าไปใหม่ เผื่อมีหลายบิลค้าง จะได้ตัดจ่ายบิลเก่าก่อน
       const pendingOrdersSnap = await tx.get(
         db
           .collection("orders")
@@ -138,31 +137,29 @@ router.post("/checkslip", upload.single("file"), async (req, res) => {
           .orderBy("order_datetime", "asc")
       );
 
-      // --- COMPUTE ---
+
 
       let runningBalance = currentBalance + amount;
 
       for (const orderDoc of pendingOrdersSnap.docs) {
         const orderData = orderDoc.data();
 
-        // ยอดที่ต้องจ่ายของบิลนี้ = ค่าบริการ + ค่าส่ง
-        // (ไม่มีฟิลด์ total_amount ใน schema จริง เลยรวมจาก service_price + delivery_price)
+
         const servicePrice = Number(orderData?.service_price || 0);
         const deliveryPrice = Number(orderData?.delivery_price || 0);
-        const amountDue = servicePrice + deliveryPrice;
+        const detergenPrice = Number(orderData?.detergent_price || 0);
+        const amountDue = servicePrice + deliveryPrice + detergenPrice;
 
         if (amountDue > 0 && runningBalance >= amountDue) {
           runningBalance -= amountDue;
           paidOrderIds.push(orderDoc.id);
         } else {
-          // ยอดไม่พอสำหรับบิลนี้ (หรือบิลถัดไปที่แพงกว่า) หยุดไล่ตัดต่อ
+
           break;
         }
       }
 
       walletBalanceAfter = runningBalance;
-
-      // --- ALL WRITES AFTER ---
 
       tx.set(docRef, topupData);
 
@@ -196,3 +193,121 @@ router.post("/checkslip", upload.single("file"), async (req, res) => {
     });
   }
 });
+router.get("/history/topup/:customer_id", async (req, res) => {
+  try{
+    const customerId = req.params.customer_id;
+    const customerRef = db.collection("customers").doc(customerId);
+    const customerSnap = await customerRef.get();
+    if (!customerSnap.exists) {
+      return res.status(404).json({
+        ok: false,
+        message: "ไม่พบลูกค้า",
+      });
+    }
+    const topupSnap = await db.collection("topup_history")
+  .where("customer_id", "==", customerRef)
+  .orderBy("topup_datetime", "desc")
+  .limit(50)
+  .get();
+
+      
+    if (topupSnap.empty) {
+      return res.json({
+        ok: true,
+        message: "ไม่พบประวัติการเติมเงิน",
+        data: [],
+      });
+    }
+    const topupHistory = topupSnap.docs.map((doc) => {
+      const data = doc.data() as TopupHistory;
+      return {
+        topup_id: data.topup_id,
+        type: "topup",
+        amount: data.amount,
+        topup_datetime: data.topup_datetime.toDate().toISOString(),
+      }
+    });
+    return res.json({
+      ok: true,
+      message: "ประวัติการเติมเงิน",
+      data: topupHistory,
+    });
+
+
+  }catch(e:any){
+    console.error("SERVER ERROR:", e);
+    return res.status(500).json({
+      ok: false,
+      message: "server error",
+      error: e.message,
+    });
+  }
+});
+router.get("/history/paid_orders/:customer_id", async (req, res) => {
+
+  try{
+    const customerId = req.params.customer_id;
+
+    const customerRef = db.collection("customers").doc(customerId);
+    const customerSnap = await customerRef.get();
+    if (!customerSnap.exists) {
+      return res.status(404).json({
+        ok: false,
+        message: "ไม่พบลูกค้า",
+      });
+    }
+
+    const paidOrdersSnap = await db.collection("orders")
+      .where("customer_id", "==", customerRef)
+      .where("status", "in", ["completed", "payment_completed"])
+      .orderBy("order_datetime", "desc")
+      .limit(50)
+      .get();
+    
+    if (paidOrdersSnap.empty) {
+      return res.json({
+        ok: true,
+        message: "ไม่พบประวัติการชำระเงิน",
+        data: [],
+      });
+    }
+    const paidOrders = paidOrdersSnap.docs.map((doc) => {
+      const data = doc.data() as Order;
+      return{
+        order_id: data.order_id,
+        type: "payment",
+        service_type: checkServiceType(data.service_type) ?? "ไม่ทราบประเภทบริการ",
+        total_amount: data.service_price + data.delivery_price + (data.detergent_price || 0),
+        order_datetime: data.order_datetime.toDate().toISOString(),
+        
+      }
+    });
+    return res.json({
+      ok: true,
+      message: "ประวัติการชำระเงิน",
+      data: paidOrders,
+    });
+
+  }
+
+  catch(e:any){
+    console.error("SERVER ERROR:", e);
+    return res.status(500).json({
+      ok: false,
+      message: "server error",
+      error: e.message,
+    });
+  }
+});
+function checkServiceType(serviceType: string) {
+  switch (serviceType) {
+    case "wash_dry":
+      return "ซักอบ";
+    case "wash":
+      return "ซักอย่างเดียว";
+    case "dry":
+      return "อบอย่างเดียว";
+    default:
+      return "ไม่ทราบประเภทบริการ";
+  }
+}

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { db } from "../config/firebase";
+import { Order } from "../modules/order";
 
 export const router = Router();
 
@@ -47,11 +48,11 @@ function sumOrdersInRange(
 router.get("/store/revenue/:storeId", async (req, res) => {
   try {
     const storeId = req.params.storeId;
-    const range = (req.query.range as string) || "day"; // day, week, month, year
+    const range = (req.query.range as string) || "day";
 
     const storeRef = db.collection("stores").doc(storeId);
 
-    // ----- Step 1: ดึงออเดอร์ที่เสร็จแล้วทั้งหมดของร้านนี้ -----
+    
     const ordersSnap = await db
       .collection("orders")
       .where("store_id", "==", storeRef)
@@ -59,14 +60,14 @@ router.get("/store/revenue/:storeId", async (req, res) => {
       .get();
 
     const orders = ordersSnap.docs.map((doc) => {
-      const data = doc.data();
+      const data = doc.data() as Order;
       return {
         date: toBkkDate(data.order_datetime.toDate()),
-        revenue: (data.service_price || 0) + (data.delivery_price || 0),
+        revenue: (data.service_price || 0) + (data.delivery_price || 0) + (data.detergent_price || 0),
       };
     });
 
-    // ----- Step 2: หาขอบเขตของ "วันนี้" ตามเวลาไทย -----
+    
     const bkkNow = toBkkDate(new Date());
     const startOfToday = new Date(bkkNow);
     startOfToday.setUTCHours(0, 0, 0, 0);
@@ -91,8 +92,7 @@ router.get("/store/revenue/:storeId", async (req, res) => {
       order_count: ordersInSummaryRange.length,
     };
 
-    // ----- Step 4: สร้างข้อมูลกราฟ ตาม range ที่เลือก -----
-    // แต่ละจุดในกราฟตอนนี้มีทั้ง revenue (ยอดเงิน) และ order_count (จำนวนออเดอร์) ของวัน/สัปดาห์/เดือน/ปีนั้นๆ
+   
     let chart: { label: string; revenue: number; order_count: number }[] = [];
 
     if (range === "day") {

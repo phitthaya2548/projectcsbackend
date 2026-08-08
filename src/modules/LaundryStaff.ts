@@ -1,3 +1,4 @@
+export type StaffStatus = "ONLINE" | "TEMP_CLOSEDTEMP_CLOSED";
 export type LaundryStaff = {
   staff_id: string;
   store_id: FirebaseFirestore.DocumentReference | null;
@@ -10,6 +11,6 @@ export type LaundryStaff = {
 
   profile_image: string | null;
 
-  status: "ใช้งาน" | "ไม่ใช้งาน";
+  status: StaffStatus;
 
 };

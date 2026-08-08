@@ -3,6 +3,7 @@ import { db, } from "../config/firebase";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import {  Order, OrderStatus} from "../modules/order";
 import { DistanceService } from "../services/haversine";
+import { NotificationService } from "../services/notification";
 
 export const router = Router();
 
@@ -101,7 +102,7 @@ const newOrder: Order = {
   detergent_option: detergent_option ?? null,
   before_wash_image: before_wash_image ?? "",
   after_wash_image: "",
-
+  detergent_price:0,
   note: note ?? null,
   machine_washer_id: null,
   machine_dryer_id: null,
@@ -131,18 +132,18 @@ router.post("/store/accept/:id", async (req, res) => {
       return res.status(404).json({ ok: false, message: "ไม่พบออเดอร์" });
     }
 
-    const data = orderSnap.data()!;
+    const Storedata = orderSnap.data()! as Order;
 
-    // ตรวจสอบว่าออเดอร์นี้เป็นของร้านที่กดรับจริง
-    if (store_id && data.store_id?.id !== store_id) {
+    
+    if (store_id && Storedata.store_id?.id !== store_id) {
       return res.status(403).json({ ok: false, message: "ออเดอร์นี้ไม่ใช่ของร้านค้านี้" });
     }
 
-    // อนุญาตให้กด "รับ" ได้เฉพาะออเดอร์ที่ยังรอยืนยันอยู่เท่านั้น
-    if (data.status !== "pending_confirmation") {
+    
+    if (Storedata.status !== "pending_confirmation") {
       return res.status(400).json({
         ok: false,
-        message: `ไม่สามารถรับออเดอร์นี้ได้ (สถานะปัจจุบัน: ${data.status})`,
+        message: `ไม่สามารถรับออเดอร์นี้ได้ (สถานะปัจจุบัน: ${Storedata.status})`,
       });
     }
 
@@ -150,6 +151,20 @@ router.post("/store/accept/:id", async (req, res) => {
       status: "waiting_pickup" as OrderStatus,
       order_datetime: FieldValue.serverTimestamp(),
     });
+
+
+    if (Storedata?.customer_id) {
+      await NotificationService.sendToUser(
+        Storedata.customer_id.id,
+        "customer",
+        "ร้านยืนยันออเดอร์แล้ว",
+        "ร้านยืนยันออเดอร์ของคุณแล้ว กำลังรอไรเดอร์มารับผ้า",
+        {
+          order_id: orderId,
+          status: "waiting_pickup"
+        }
+      );
+    }
 
     return res.status(200).json({
       ok: true,
@@ -383,7 +398,7 @@ const riderDelivery = riderDeliverySnap?.data();
 const staff = staffSnap?.data();
 const review = reviewSnap.exists ? reviewSnap.data() : null;
 const storeData = storeSnap?.data();
-const addressData = addressSnap?.data();   // ← เพิ่มบรรทัดนี้ ที่หายไป
+const addressData = addressSnap?.data();
 
 const order = {
   order_id: data.order_id,
@@ -392,7 +407,7 @@ const order = {
   detergent_option: data.detergent_option,
   service_price: data.service_price ?? 0,
   delivery_price: data.delivery_price ?? 0,
-  total_amount: (data.service_price ?? 0) + (data.delivery_price ?? 0) + (storeData?.detergent_price ?? 0),
+  total_amount: (data.service_price ?? 0) + (data.delivery_price ?? 0) + (data?.detergent_price ?? 0),
   wash_dry_weight: data.wash_dry_weight,
   note: data.note,
   before_wash_image: data.before_wash_image,
@@ -404,7 +419,7 @@ const order = {
   address_text: addressData?.address ?? null,        
   machine_washer_id: data.machine_washer_id?.id ?? null,
   machine_dryer_id: data.machine_dryer_id?.id ?? null,
-  detergent_price: storeData?.detergent_price ?? 0,
+  detergent_price: data.detergent_price ?? 0,
   rider_pickup: riderPickup ? {
     rider_id: riderPickup.rider_id,
     fullname: riderPickup.fullname,
@@ -659,7 +674,7 @@ router.get("/store/list/:id", async (req, res) => {
         wash_dry_weight:   d.wash_dry_weight         ?? 0,
         service_price:     d.service_price           ?? 0,
         delivery_price:    d.delivery_price          ?? 0,
-        total_amount:      (d.service_price ?? 0) + (d.delivery_price ?? 0),
+        total_amount:      (d.service_price ?? 0) + (d.delivery_price ?? 0) + (d?.detergent_price ?? 0),
         detergent_option:  d.detergent_option        ?? null,
         before_wash_image: d.before_wash_image       ?? "",
         after_wash_image:  d.after_wash_image        ?? "",
@@ -670,7 +685,7 @@ router.get("/store/list/:id", async (req, res) => {
         order_datetime:    d.order_datetime
           ? { _seconds: d.order_datetime.seconds }
           : null,
-        // ข้อมูลเสริม denormalized
+        
         customer_fullname: customerData?.fullname    ?? "-",
         customer_phone:    customerData?.phone        ?? "-",
         address_full:      addressData?.address_text ?? "-",
@@ -723,7 +738,7 @@ router.get("/store/completed/:id", async (req, res) => {
       detergent_option: data.detergent_option,
       service_price: data.service_price ?? 0,
       delivery_price: data.delivery_price ?? 0,
-      total_amount: (data.service_price ?? 0) + (data.delivery_price ?? 0),
+      total_amount: (data.service_price ?? 0) + (data.delivery_price ?? 0) + (data?.detergent_price ?? 0),
       wash_dry_weight: data.wash_dry_weight,
       note: data.note,
       before_wash_image: data.before_wash_image,
@@ -733,7 +748,7 @@ router.get("/store/completed/:id", async (req, res) => {
       address_id: data.address_id?.id ?? null,
       machine_washer_id: data.machine_washer_id?.id ?? null,
       machine_dryer_id: data.machine_dryer_id?.id ?? null,
-      // ข้อมูลเสริม denormalized
+detergent_price: data.detergent_price ?? 0,
       customer_fullname: customer?.fullname ?? "-",
       customer_phone: customer?.phone ?? "-",
       address_full: address?.address_text ?? "-",

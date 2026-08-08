@@ -12,9 +12,10 @@ import { router as orders } from "./controller/orders_controller";
 import { router as ordersRider } from "./controller/orders_rider_controller";
 import { router as ordersStaff } from "./controller/orders_staff_controller";
 import { router as resetpassword } from "./controller/password_controller";
-import { router as employeeregister_store} from "./controller/employee_register_store_controller"
+import { router as applicant_store} from "./controller/applicant_store_controller"
 import { router as report } from "./controller/report_store_controller"
 import { router as history_order_cus} from "./controller/history_order_store_controller"
+import { router as notification } from "./controller/notification_controller"
 export const app = express();
 
 app.use(express.json({ limit: "1mb" }));
@@ -38,8 +39,9 @@ app.use("/order/rider", ordersRider);
 app.use("/order/staff", ordersStaff);
 app.use("/order", orders);
 app.use("/history/order",history_order_cus);
-app.use("/employee_regis_store",employeeregister_store);
+app.use("/employee_regis_store",applicant_store);
 app.use("/password", resetpassword);
+app.use("/notification", notification);
 
 app.use((_req, res) => {
   res.status(404).json({
