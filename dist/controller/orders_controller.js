@@ -5,6 +5,7 @@ const express_1 = require("express");
 const firebase_1 = require("../config/firebase");
 const firestore_1 = require("firebase-admin/firestore");
 const haversine_1 = require("../services/haversine");
+const notification_1 = require("../services/notification");
 exports.router = (0, express_1.Router)();
 exports.router.post("/create", async (req, res) => {
     try {
@@ -25,7 +26,7 @@ exports.router.post("/create", async (req, res) => {
             return res.status(404).json({ ok: false, message: "ไม่พบข้อมูลลูกค้า" });
         }
         const store = storeSnap.data();
-        if (store.status !== "เปิดร้าน") {
+        if (store.status !== "OPEN") {
             return res.status(400).json({ ok: false, message: "ร้านปิดอยู่ ไม่สามารถสั่งได้" });
         }
         const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Bangkok" }));
@@ -89,6 +90,7 @@ exports.router.post("/create", async (req, res) => {
             detergent_option: detergent_option ?? null,
             before_wash_image: before_wash_image ?? "",
             after_wash_image: "",
+            detergent_price: 0,
             note: note ?? null,
             machine_washer_id: null,
             machine_dryer_id: null,
@@ -116,22 +118,26 @@ exports.router.post("/store/accept/:id", async (req, res) => {
         if (!orderSnap.exists) {
             return res.status(404).json({ ok: false, message: "ไม่พบออเดอร์" });
         }
-        const data = orderSnap.data();
-        // ตรวจสอบว่าออเดอร์นี้เป็นของร้านที่กดรับจริง
-        if (store_id && data.store_id?.id !== store_id) {
+        const Storedata = orderSnap.data();
+        if (store_id && Storedata.store_id?.id !== store_id) {
             return res.status(403).json({ ok: false, message: "ออเดอร์นี้ไม่ใช่ของร้านค้านี้" });
         }
-        // อนุญาตให้กด "รับ" ได้เฉพาะออเดอร์ที่ยังรอยืนยันอยู่เท่านั้น
-        if (data.status !== "pending_confirmation") {
+        if (Storedata.status !== "pending_confirmation") {
             return res.status(400).json({
                 ok: false,
-                message: `ไม่สามารถรับออเดอร์นี้ได้ (สถานะปัจจุบัน: ${data.status})`,
+                message: `ไม่สามารถรับออเดอร์นี้ได้ (สถานะปัจจุบัน: ${Storedata.status})`,
             });
         }
         await orderRef.update({
             status: "waiting_pickup",
             order_datetime: firestore_1.FieldValue.serverTimestamp(),
         });
+        if (Storedata?.customer_id) {
+            await notification_1.NotificationService.sendToUser(Storedata.customer_id.id, "customer", "ร้านยืนยันออเดอร์แล้ว", "ร้านยืนยันออเดอร์ของคุณแล้ว กำลังรอไรเดอร์มารับผ้า", {
+                order_id: orderId,
+                status: "waiting_pickup"
+            });
+        }
         return res.status(200).json({
             ok: true,
             message: "รับออเดอร์สำเร็จ เปลี่ยนสถานะเป็นรอจัดส่ง",
@@ -141,6 +147,37 @@ exports.router.post("/store/accept/:id", async (req, res) => {
     }
     catch (error) {
         console.error("Error accepting order:", error);
+        return res.status(500).json({ ok: false, message: "Server error" });
+    }
+});
+exports.router.post("/store/cancel/:id", async (req, res) => {
+    const orderId = req.params.id;
+    const { store_id, reason } = req.body;
+    try {
+        const orderRef = firebase_1.db.collection("orders").doc(orderId);
+        const orderSnap = await orderRef.get();
+        if (!orderSnap.exists) {
+            return res.status(404).json({ ok: false, message: "ไม่พบออเดอร์" });
+        }
+        const data = orderSnap.data();
+        // ตรวจสอบว่าออเดอร์นี้เป็นของร้านที่กดยกเลิกจริง
+        if (store_id && data.store_id?.id !== store_id) {
+            return res.status(403).json({ ok: false, message: "ออเดอร์นี้ไม่ใช่ของร้านค้านี้" });
+        }
+        await orderRef.update({
+            status: "cancelled",
+            cancel_reason: reason ?? null,
+            cancelled_at: firestore_1.FieldValue.serverTimestamp(),
+        });
+        return res.status(200).json({
+            ok: true,
+            message: "ยกเลิกออเดอร์สำเร็จ",
+            order_id: orderId,
+            status: "cancelled",
+        });
+    }
+    catch (error) {
+        console.error("Error cancelling order:", error);
         return res.status(500).json({ ok: false, message: "Server error" });
     }
 });
@@ -295,6 +332,8 @@ exports.router.get("/completed/:id", async (req, res) => {
         const riderDelivery = riderDeliverySnap?.data();
         const staff = staffSnap?.data();
         const review = reviewSnap.exists ? reviewSnap.data() : null;
+        const storeData = storeSnap?.data();
+        const addressData = addressSnap?.data();
         const order = {
             order_id: data.order_id,
             status: data.status,
@@ -302,16 +341,19 @@ exports.router.get("/completed/:id", async (req, res) => {
             detergent_option: data.detergent_option,
             service_price: data.service_price ?? 0,
             delivery_price: data.delivery_price ?? 0,
-            total_amount: (data.service_price ?? 0) + (data.delivery_price ?? 0),
+            total_amount: (data.service_price ?? 0) + (data.delivery_price ?? 0) + (data?.detergent_price ?? 0),
             wash_dry_weight: data.wash_dry_weight,
             note: data.note,
             before_wash_image: data.before_wash_image,
             after_wash_image: data.after_wash_image,
             order_datetime: data.order_datetime,
             store_id: data.store_id?.id ?? null,
+            store_name: storeData?.store_name ?? null,
             address_id: data.address_id?.id ?? null,
+            address_text: addressData?.address ?? null,
             machine_washer_id: data.machine_washer_id?.id ?? null,
             machine_dryer_id: data.machine_dryer_id?.id ?? null,
+            detergent_price: data.detergent_price ?? 0,
             rider_pickup: riderPickup ? {
                 rider_id: riderPickup.rider_id,
                 fullname: riderPickup.fullname,
@@ -335,7 +377,6 @@ exports.router.get("/completed/:id", async (req, res) => {
                 profile_image: staff.profile_image,
                 username: staff.username,
             } : null,
-            // --- เพิ่มใหม่ ---
             review: review ? {
                 rating: review.rating,
                 comment: review.comment ?? null,
@@ -354,55 +395,37 @@ exports.router.post("/review/:id", async (req, res) => {
     const { rating, comment } = req.body;
     try {
         if (typeof rating !== "number" || rating < 1 || rating > 5) {
-            return res.status(400).json({ error: "Rating must be a number between 1-5" });
+            return res.status(400).json({ error: "คะแนนต้องเป็นตัวเลขระหว่าง 1-5" });
         }
         if (comment !== undefined && comment !== null && typeof comment !== "string") {
-            return res.status(400).json({ error: "Comment must be a string" });
+            return res.status(400).json({ error: "ความคิดเห็นต้องเป็นข้อความ" });
         }
         if (typeof comment === "string" && comment.length > 500) {
-            return res.status(400).json({ error: "Comment is too long (max 500 characters)" });
+            return res.status(400).json({ error: "ความคิดเห็นยาวเกินไป (สูงสุด 500 ตัวอักษร)" });
         }
         const orderSnap = await firebase_1.db.collection("orders").doc(orderId).get();
         if (!orderSnap.exists) {
-            return res.status(404).json({ error: "Order not found" });
+            return res.status(404).json({ error: "ไม่พบคำสั่งซื้อ" });
         }
         const orderData = orderSnap.data();
         if (orderData.status !== "completed") {
-            return res.status(400).json({ error: "Order must be completed before reviewing" });
+            return res.status(400).json({ error: "ต้องดำเนินการคำสั่งซื้อเสร็จสิ้นก่อนจึงจะรีวิวได้" });
         }
         const reviewRef = firebase_1.db.collection("reviews").doc(orderId);
         const existingReview = await reviewRef.get();
         if (existingReview.exists) {
-            return res.status(409).json({ error: "This order has already been reviewed" });
+            return res.status(409).json({ error: "คำสั่งซื้อนี้ถูกรีวิวไปแล้ว" });
         }
         const reviewData = {
             review_id: orderId,
-            shop_id: orderData.store_id ?? null,
+            store_id: orderData.store_id ?? null,
             order_id: firebase_1.db.collection("orders").doc(orderId),
             customer_id: orderData.customer_id ?? null,
             rating,
             comment: comment?.trim() || null,
             reviewed_at: firestore_1.Timestamp.now(),
         };
-        await firebase_1.db.runTransaction(async (tx) => {
-            let storeSnap = null;
-            const storeRef = orderData.store_id;
-            if (storeRef) {
-                storeSnap = await tx.get(storeRef);
-            }
-            tx.set(reviewRef, reviewData);
-            if (storeRef && storeSnap && storeSnap.exists) {
-                const storeData = storeSnap.data();
-                const prevCount = storeData.review_count ?? 0;
-                const prevAvg = storeData.avg_rating ?? 0;
-                const newCount = prevCount + 1;
-                const newAvg = (prevAvg * prevCount + rating) / newCount;
-                tx.update(storeRef, {
-                    review_count: newCount,
-                    avg_rating: Math.round(newAvg * 10) / 10,
-                });
-            }
-        });
+        await reviewRef.set(reviewData);
         return res.json({
             data: {
                 rating: reviewData.rating,
@@ -413,7 +436,7 @@ exports.router.post("/review/:id", async (req, res) => {
     }
     catch (err) {
         console.error("POST /review/:id error:", err);
-        return res.status(500).json({ error: "Internal server error" });
+        return res.status(500).json({ error: "เกิดข้อผิดพลาดที่เซิร์ฟเวอร์" });
     }
 });
 exports.router.get("/store/:id/reviews", async (req, res) => {
@@ -424,26 +447,27 @@ exports.router.get("/store/:id/reviews", async (req, res) => {
         if (!storeSnap.exists) {
             return res.status(404).json({ error: "Store not found" });
         }
-        const storeData = storeSnap.data();
         const reviewsSnap = await firebase_1.db
             .collection("reviews")
-            .where("shop_id", "==", storeRef)
+            .where("store_id", "==", storeRef)
             .orderBy("reviewed_at", "desc")
             .get();
         if (reviewsSnap.empty) {
             return res.json({
                 data: {
-                    avg_rating: storeData.avg_rating ?? 0,
-                    review_count: storeData.review_count ?? 0,
+                    avg_rating: 0,
+                    review_count: 0,
                     reviews: [],
                 },
             });
         }
-        const customerIds = [
-            ...new Set(reviewsSnap.docs
-                .map((d) => d.data().customer_id?.id)
-                .filter(Boolean)),
-        ];
+        const customerIdSet = new Set();
+        for (const doc of reviewsSnap.docs) {
+            const id = doc.data().customer_id?.id;
+            if (id)
+                customerIdSet.add(id);
+        }
+        const customerIds = [...customerIdSet];
         const customerMap = new Map();
         if (customerIds.length > 0) {
             const customerSnaps = await Promise.all(customerIds.map((id) => firebase_1.db.collection("customers").doc(id).get()));
@@ -452,25 +476,30 @@ exports.router.get("/store/:id/reviews", async (req, res) => {
                     customerMap.set(snap.id, snap.data());
             });
         }
+        let ratingSum = 0;
         const reviews = reviewsSnap.docs.map((doc) => {
-            const d = doc.data();
-            const customerId = d.customer_id?.id ?? null;
+            const data = doc.data();
+            const customerId = data.customer_id?.id ?? null;
             const customerData = customerId ? customerMap.get(customerId) ?? null : null;
+            const rating = typeof data.rating === "number" ? data.rating : 0;
+            ratingSum += rating;
             return {
                 review_id: doc.id,
-                rating: d.rating,
-                comment: d.comment ?? null,
-                reviewed_at: d.reviewed_at
-                    ? { _seconds: d.reviewed_at.seconds }
+                rating: data.rating,
+                comment: data.comment ?? null,
+                reviewed_at: data.reviewed_at
+                    ? new Date(data.reviewed_at.seconds * 1000).toISOString()
                     : null,
-                customer_fullname: customerData?.fullname ?? "ผู้ใช้ไม่ระบุชื่อ",
-                customer_profile_image: customerData?.profile_image ?? "",
+                reviewer_name: customerData?.fullname ?? "ผู้ใช้ไม่ระบุชื่อ",
+                reviewer_image: customerData?.profile_image ?? "",
             };
         });
+        const reviewCount = reviewsSnap.size;
+        const avgRating = reviewCount > 0 ? ratingSum / reviewCount : 0;
         return res.json({
             data: {
-                avg_rating: storeData.avg_rating ?? 0,
-                review_count: storeData.review_count ?? 0,
+                avg_rating: Number(avgRating.toFixed(2)),
+                review_count: reviewCount,
                 reviews,
             },
         });
@@ -540,7 +569,7 @@ exports.router.get("/store/list/:id", async (req, res) => {
                 wash_dry_weight: d.wash_dry_weight ?? 0,
                 service_price: d.service_price ?? 0,
                 delivery_price: d.delivery_price ?? 0,
-                total_amount: (d.service_price ?? 0) + (d.delivery_price ?? 0),
+                total_amount: (d.service_price ?? 0) + (d.delivery_price ?? 0) + (d?.detergent_price ?? 0),
                 detergent_option: d.detergent_option ?? null,
                 before_wash_image: d.before_wash_image ?? "",
                 after_wash_image: d.after_wash_image ?? "",
@@ -551,7 +580,6 @@ exports.router.get("/store/list/:id", async (req, res) => {
                 order_datetime: d.order_datetime
                     ? { _seconds: d.order_datetime.seconds }
                     : null,
-                // ข้อมูลเสริม denormalized
                 customer_fullname: customerData?.fullname ?? "-",
                 customer_phone: customerData?.phone ?? "-",
                 address_full: addressData?.address_text ?? "-",
@@ -594,7 +622,7 @@ exports.router.get("/store/completed/:id", async (req, res) => {
             detergent_option: data.detergent_option,
             service_price: data.service_price ?? 0,
             delivery_price: data.delivery_price ?? 0,
-            total_amount: (data.service_price ?? 0) + (data.delivery_price ?? 0),
+            total_amount: (data.service_price ?? 0) + (data.delivery_price ?? 0) + (data?.detergent_price ?? 0),
             wash_dry_weight: data.wash_dry_weight,
             note: data.note,
             before_wash_image: data.before_wash_image,
@@ -604,7 +632,7 @@ exports.router.get("/store/completed/:id", async (req, res) => {
             address_id: data.address_id?.id ?? null,
             machine_washer_id: data.machine_washer_id?.id ?? null,
             machine_dryer_id: data.machine_dryer_id?.id ?? null,
-            // ข้อมูลเสริม denormalized
+            detergent_price: data.detergent_price ?? 0,
             customer_fullname: customer?.fullname ?? "-",
             customer_phone: customer?.phone ?? "-",
             address_full: address?.address_text ?? "-",

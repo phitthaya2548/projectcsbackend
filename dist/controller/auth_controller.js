@@ -62,7 +62,8 @@ function checkStoreProfile(data) {
 }
 async function getCustomerAddressSummary(customerId) {
     const getaddr = firebase_js_1.db.collection("customer_addresses");
-    const customerRef = firebase_js_1.db.doc(`customers/${customerId}`);
+    // const customerRef = db.doc(`customers/${customerId}`);
+    const customerRef = firebase_js_1.db.collection("customers").doc(customerId);
     const allsaddr = await getaddr.get();
     allsaddr.docs.forEach(doc => {
         const data = doc.data();
@@ -182,6 +183,7 @@ exports.router.post("/login", async (req, res) => {
                 email: data.email ?? "",
                 phone: data.phone ?? "",
                 profile_image: data.profile_image ?? null,
+                status: data.status ?? "",
                 profile_complete: storeStatus.profile_complete,
                 missing_fields: storeStatus.missing_fields,
             });
@@ -210,6 +212,7 @@ exports.router.post("/login", async (req, res) => {
                 fullname: data.fullname ?? "",
                 phone: data.phone ?? "",
                 profile_image: data.profile_image ?? null,
+                status: data.status ?? "",
             });
         }
         const getstaff = await firebase_js_1.db
@@ -242,6 +245,7 @@ exports.router.post("/login", async (req, res) => {
                 fullname: data.fullname ?? "",
                 phone: data.phone ?? "",
                 profile_image: data.profile_image ?? null,
+                status: data.status ?? "",
             });
         }
         return res.status(400).json({

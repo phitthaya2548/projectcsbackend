@@ -99,16 +99,53 @@ exports.router.post("/checkslip", upload.single("file"), async (req, res) => {
             trans_ref: transRef,
             topup_datetime: firestore_1.Timestamp.now(),
         };
+        let walletBalanceAfter = 0;
+        const paidOrderIds = [];
         await firebase_1.db.runTransaction(async (tx) => {
+            const customerDoc = await tx.get(customerRef);
+            if (!customerDoc.exists) {
+                throw new Error("CUSTOMER_NOT_FOUND");
+            }
+            const currentBalance = Number(customerDoc.data()?.wallet_balance || 0);
+            const pendingOrdersSnap = await tx.get(firebase_1.db
+                .collection("orders")
+                .where("customer_id", "==", customerRef)
+                .where("status", "==", "waiting_payment")
+                .orderBy("order_datetime", "asc"));
+            let runningBalance = currentBalance + amount;
+            for (const orderDoc of pendingOrdersSnap.docs) {
+                const orderData = orderDoc.data();
+                const servicePrice = Number(orderData?.service_price || 0);
+                const deliveryPrice = Number(orderData?.delivery_price || 0);
+                const detergenPrice = Number(orderData?.detergent_price || 0);
+                const amountDue = servicePrice + deliveryPrice + detergenPrice;
+                if (amountDue > 0 && runningBalance >= amountDue) {
+                    runningBalance -= amountDue;
+                    paidOrderIds.push(orderDoc.id);
+                }
+                else {
+                    break;
+                }
+            }
+            walletBalanceAfter = runningBalance;
             tx.set(docRef, topupData);
             tx.update(customerRef, {
-                wallet_balance: firebase_1.FieldValue.increment(amount),
+                wallet_balance: runningBalance,
             });
+            for (const orderId of paidOrderIds) {
+                tx.update(firebase_1.db.collection("orders").doc(orderId), {
+                    status: "payment_completed",
+                });
+            }
         });
         return res.json({
             ok: true,
             message: "เติมเงินสำเร็จ",
-            data: topupData,
+            data: {
+                ...topupData,
+                wallet_balance_after: walletBalanceAfter,
+                paid_order_ids: paidOrderIds,
+            },
         });
     }
     catch (e) {
@@ -120,3 +157,111 @@ exports.router.post("/checkslip", upload.single("file"), async (req, res) => {
         });
     }
 });
+exports.router.get("/history/topup/:customer_id", async (req, res) => {
+    try {
+        const customerId = req.params.customer_id;
+        const customerRef = firebase_1.db.collection("customers").doc(customerId);
+        const customerSnap = await customerRef.get();
+        if (!customerSnap.exists) {
+            return res.status(404).json({
+                ok: false,
+                message: "ไม่พบลูกค้า",
+            });
+        }
+        const topupSnap = await firebase_1.db.collection("topup_history")
+            .where("customer_id", "==", customerRef)
+            .orderBy("topup_datetime", "desc")
+            .limit(50)
+            .get();
+        if (topupSnap.empty) {
+            return res.json({
+                ok: true,
+                message: "ไม่พบประวัติการเติมเงิน",
+                data: [],
+            });
+        }
+        const topupHistory = topupSnap.docs.map((doc) => {
+            const data = doc.data();
+            return {
+                topup_id: data.topup_id,
+                type: "topup",
+                amount: data.amount,
+                topup_datetime: data.topup_datetime.toDate().toISOString(),
+            };
+        });
+        return res.json({
+            ok: true,
+            message: "ประวัติการเติมเงิน",
+            data: topupHistory,
+        });
+    }
+    catch (e) {
+        console.error("SERVER ERROR:", e);
+        return res.status(500).json({
+            ok: false,
+            message: "server error",
+            error: e.message,
+        });
+    }
+});
+exports.router.get("/history/paid_orders/:customer_id", async (req, res) => {
+    try {
+        const customerId = req.params.customer_id;
+        const customerRef = firebase_1.db.collection("customers").doc(customerId);
+        const customerSnap = await customerRef.get();
+        if (!customerSnap.exists) {
+            return res.status(404).json({
+                ok: false,
+                message: "ไม่พบลูกค้า",
+            });
+        }
+        const paidOrdersSnap = await firebase_1.db.collection("orders")
+            .where("customer_id", "==", customerRef)
+            .where("status", "in", ["completed", "payment_completed"])
+            .orderBy("order_datetime", "desc")
+            .limit(50)
+            .get();
+        if (paidOrdersSnap.empty) {
+            return res.json({
+                ok: true,
+                message: "ไม่พบประวัติการชำระเงิน",
+                data: [],
+            });
+        }
+        const paidOrders = paidOrdersSnap.docs.map((doc) => {
+            const data = doc.data();
+            return {
+                order_id: data.order_id,
+                type: "payment",
+                service_type: checkServiceType(data.service_type) ?? "ไม่ทราบประเภทบริการ",
+                total_amount: data.service_price + data.delivery_price + (data.detergent_price || 0),
+                order_datetime: data.order_datetime.toDate().toISOString(),
+            };
+        });
+        return res.json({
+            ok: true,
+            message: "ประวัติการชำระเงิน",
+            data: paidOrders,
+        });
+    }
+    catch (e) {
+        console.error("SERVER ERROR:", e);
+        return res.status(500).json({
+            ok: false,
+            message: "server error",
+            error: e.message,
+        });
+    }
+});
+function checkServiceType(serviceType) {
+    switch (serviceType) {
+        case "wash_dry":
+            return "ซักอบ";
+        case "wash":
+            return "ซักอย่างเดียว";
+        case "dry":
+            return "อบอย่างเดียว";
+        default:
+            return "ไม่ทราบประเภทบริการ";
+    }
+}

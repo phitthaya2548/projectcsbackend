@@ -14,25 +14,25 @@ exports.router.get("/profile/:customerId", async (req, res) => {
     try {
         const customerId = req.params.customerId;
         const customerref = firebase_js_1.db.collection("customers").doc(customerId);
-        const snap = await customerref.get();
-        if (!snap.exists) {
+        const resultcustomer = await customerref.get();
+        if (!resultcustomer.exists) {
             return res.status(404).json({ ok: false, message: "ไม่พบลูกค้า" });
         }
-        const d = snap.data();
+        const data = resultcustomer.data();
         return res.json({
             ok: true,
-            customer_id: snap.id,
+            customer_id: resultcustomer.id,
             data: {
-                customer_id: d.customer_id ?? snap.id,
-                username: d.username ?? '',
-                fullname: d.fullname ?? '',
-                email: d.email ?? '',
-                phone: d.phone ?? '',
-                gender: d.gender ?? '',
-                birthday: (d.birthday),
-                profile_image: d.profile_image ?? '',
-                wallet_balance: Number(d.wallet_balance ?? 0),
-                google_id: d.google_id ?? '',
+                customer_id: data.customer_id ?? resultcustomer.id,
+                username: data.username ?? '',
+                fullname: data.fullname ?? '',
+                email: data.email ?? '',
+                phone: data.phone ?? '',
+                gender: data.gender ?? '',
+                birthday: (data.birthday),
+                profile_image: data.profile_image ?? '',
+                wallet_balance: Number(data.wallet_balance ?? 0),
+                google_id: data.google_id ?? '',
             },
         });
     }
@@ -47,24 +47,24 @@ exports.router.put("/profile/:id", upload_js_1.upload.single("profile_image"), a
     try {
         const customerId = req.params.id;
         const customerref = firebase_js_1.db.collection("customers").doc(customerId);
-        const exist = await customerref.get();
-        if (!exist.exists) {
+        const resultcustomer = await customerref.get();
+        if (!resultcustomer.exists) {
             return res.status(404).json({
                 ok: false,
                 message: "ไม่พบลูกค้า",
             });
         }
-        const currentData = exist.data();
+        const currentDatacus = resultcustomer.data();
         const { fullname, email, phone, gender, birthday } = req.body;
         const update = {};
         const emailNorm = typeof email === "string" ? email.trim().toLowerCase() : "";
-        if (currentData.google_id && email !== undefined && email !== currentData.email) {
+        if (currentDatacus.google_id && email !== undefined && email !== currentDatacus.email) {
             return res.status(400).json({
                 ok: false,
                 message: "บัญชี Google ไม่สามารถแก้ไขอีเมลได้",
             });
         }
-        if (!currentData.google_id && email !== undefined && emailNorm) {
+        if (!currentDatacus.google_id && email !== undefined && emailNorm) {
             const q = await firebase_js_1.db
                 .collection("customers")
                 .where("email", "==", emailNorm)
@@ -108,8 +108,8 @@ exports.router.put("/profile/:id", upload_js_1.upload.single("profile_image"), a
             update.profile_image = publicUrl;
         }
         await customerref.set(update, { merge: true });
-        const snap = await customerref.get();
-        const data = snap.data();
+        const customerSnapshot = await customerref.get();
+        const data = customerSnapshot.data();
         const birthdayOut = data.birthday?.toDate?.()
             ? data.birthday.toDate().toISOString().slice(0, 10)
             : data.birthday ?? null;
@@ -283,6 +283,7 @@ exports.router.post("/addresses/:id", async (req, res) => {
             const batch = firebase_js_1.db.batch();
             customersnap.docs.forEach(d => batch.update(d.ref, { status: false }));
             await batch.commit();
+            await batch.commit();
         }
         const ref = firebase_js_1.db.collection("customer_addresses").doc();
         const dataaddress = {
@@ -312,19 +313,19 @@ exports.router.get("/addresses/active/:id", async (req, res) => {
         const customerRef = firebase_js_1.db
             .collection("customers")
             .doc(customerId);
-        const snap = await firebase_js_1.db
+        const customersnap = await firebase_js_1.db
             .collection("customer_addresses")
             .where("customer_id", "==", customerRef)
             .where("status", "==", true)
             .limit(1)
             .get();
-        if (snap.empty) {
+        if (customersnap.empty) {
             return res.json({
                 ok: true,
                 data: null,
             });
         }
-        const doc = snap.docs[0];
+        const doc = customersnap.docs[0];
         const data = doc.data();
         res.json({
             ok: true,
@@ -352,12 +353,12 @@ exports.router.get("/addresses/:id", async (req, res) => {
         const customerRef = firebase_js_1.db
             .collection("customers")
             .doc(customerId);
-        const snap = await firebase_js_1.db
+        const customersnap = await firebase_js_1.db
             .collection("customer_addresses")
             .where("customer_id", "==", customerRef)
             .orderBy("status", "desc")
             .get();
-        const data = snap.docs.map(doc => {
+        const data = customersnap.docs.map(doc => {
             const d = doc.data();
             return {
                 address_id: doc.id,
@@ -388,8 +389,8 @@ exports.router.put("/addresses/update/:id", async (req, res) => {
         const addressRef = firebase_js_1.db
             .collection("customer_addresses")
             .doc(id);
-        const snap = await addressRef.get();
-        if (!snap.exists) {
+        const addresssnap = await addressRef.get();
+        if (!addresssnap.exists) {
             return res.status(404).json({
                 ok: false,
                 message: "Address not found",
@@ -448,12 +449,11 @@ exports.router.put("/addresses/status/:id", async (req, res) => {
         const addressRef = firebase_js_1.db
             .collection("customer_addresses")
             .doc(id);
-        const snap = await addressRef.get();
-        if (!snap.exists) {
+        const addresssnap = await addressRef.get();
+        if (!addresssnap.exists) {
             return res.status(404).json({ ok: false });
         }
-        const data = snap.data();
-        // 🔥 เป็น DocumentReference แล้ว
+        const data = addresssnap.data();
         const customerRef = data.customer_id;
         const defaultAddress = await firebase_js_1.db
             .collection("customer_addresses")
@@ -461,9 +461,9 @@ exports.router.put("/addresses/status/:id", async (req, res) => {
             .where("status", "==", true)
             .get();
         const batch = firebase_js_1.db.batch();
-        // ปิดตัวอื่น
+        // ทำให้ตัวอื่นไม่ใช่ที่อยู่หลัก
         defaultAddress.docs.forEach(d => batch.update(d.ref, { status: false }));
-        // เปิดตัวนี้
+        // ให้ตัวที่แก้ไขเป้นที่อยู่หลัก
         batch.update(addressRef, { status: true });
         await batch.commit();
         res.json({ ok: true });
@@ -497,13 +497,14 @@ exports.router.delete("/addresses/delete/:id", async (req, res) => {
         });
     }
 });
+// ดึงร้านค้ามาแสดงทั้หมด
 exports.router.get("/getstores", async (req, res) => {
     try {
         const search = (req.query.search || "").trim();
         const customerLat = Number(req.query.lat);
         const customerLng = Number(req.query.lng);
-        const snap = await firebase_js_1.db.collection("stores").get();
-        let data = snap.docs.map(data => {
+        const storesnap = await firebase_js_1.db.collection("stores").get();
+        let data = storesnap.docs.map(data => {
             const storeData = data.data();
             let distance = 0;
             if (!isNaN(customerLat) && !isNaN(customerLng)) {
@@ -517,12 +518,11 @@ exports.router.get("/getstores", async (req, res) => {
                 opening: `${storeData.opening_hours ?? ""} - ${storeData.closed_hours ?? ""}`,
                 services: storeData.services ?? [],
                 distance_km: Number(distance.toFixed(1)),
-                status: storeData.status ?? "ปิดชั่วคราว",
+                status: storeData.status ?? "TEMP_CLOSED",
             };
         });
         if (search) {
-            data = data.filter(s => s.store_name.toLowerCase().includes(search.toLowerCase()) ||
-                s.store_name.includes(search));
+            data = data.filter(s => s.store_name.toLowerCase().includes(search.toLowerCase()));
         }
         data = data.slice(0, 20);
         res.json({ ok: true, data });

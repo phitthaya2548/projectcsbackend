@@ -15,4 +15,5 @@ server.on("error", (err) => {
 server.listen(port, () => {
     console.log(`Server started on ${port}`);
 });
-//npm run start:dev 
+//npm run start:dev
+//npx tsx watch src/server.ts

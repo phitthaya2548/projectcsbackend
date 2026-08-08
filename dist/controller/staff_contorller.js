@@ -73,7 +73,7 @@ exports.router.post("/register", upload_1.upload.single("profile_image"), async 
             fullname,
             phone,
             profile_image: imageUrl,
-            status: "ใช้งาน",
+            status: "TEMP_CLOSED",
         };
         await laundryRef.set(staff);
         return res.json({
@@ -167,7 +167,7 @@ exports.router.put("/profile/status/:id", async (req, res) => {
                 message: "กรุณาระบุสถานะพนักงานซักอบ",
             });
         }
-        const allowedStatus = ["ใช้งาน", "ปิดชั่วคราว"];
+        const allowedStatus = ["ONLINE", "TEMP_CLOSED"];
         if (!allowedStatus.includes(status)) {
             return res.status(400).json({
                 ok: false,
@@ -197,6 +197,34 @@ exports.router.put("/profile/status/:id", async (req, res) => {
     }
     catch (e) {
         console.error("update laundry staff status error:", e);
+        return res.status(500).json({
+            ok: false,
+            message: e.message ?? "Server error",
+        });
+    }
+});
+exports.router.get("/profile/status/:id", async (req, res) => {
+    try {
+        const staffId = req.params.id;
+        const staffRef = firebase_1.db.collection("laundry_staff").doc(staffId);
+        const snap = await staffRef.get();
+        if (!snap.exists) {
+            return res.status(404).json({
+                ok: false,
+                message: "ไม่พบพนักงาน",
+            });
+        }
+        const data = snap.data();
+        return res.json({
+            ok: true,
+            data: {
+                staff_id: staffId,
+                status: data?.status ?? "TEMP_CLOSED",
+            },
+        });
+    }
+    catch (e) {
+        console.error("get laundry staff status error:", e);
         return res.status(500).json({
             ok: false,
             message: e.message ?? "Server error",
