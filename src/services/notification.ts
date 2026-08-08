@@ -72,7 +72,6 @@ export class NotificationService {
       try {
         await messaging.send({
           token,
-
           notification: {
             title,
             body,
