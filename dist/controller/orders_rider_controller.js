@@ -59,12 +59,7 @@ exports.router.put("/update/status/:id", upload_1.upload.single("image"), async 
                 message: "ไม่พบไรเดอร์",
             });
         }
-        const storeRef = orderSnap.data()?.store_id;
-        if (!storeRef) {
-            return res.status(404).json({ ok: false, message: "ไม่พบร้านค้า" });
-        }
         const orderData = orderSnap.data();
-<<<<<<< HEAD
         if (!orderData.store_id) {
             return res.status(404).json({
                 ok: false,
@@ -92,16 +87,6 @@ exports.router.put("/update/status/:id", upload_1.upload.single("image"), async 
             });
         }
         let publicUrl = null;
-=======
-        const total_amount = orderData?.service_price + orderData?.delivery_price + (orderData?.detergent_price ?? 0);
-        const updateData = {
-            status,
-            order_datetime: firebase_1.FieldValue.serverTimestamp(),
-        };
-        const updateStoreData = {
-            wallet_balance: firebase_1.FieldValue.increment(total_amount),
-        };
->>>>>>> origin/main
         if (req.file) {
             const safeOriginalName = req.file.originalname.replace(/[^\w.\-]/g, "_");
             const fileName = `orders/${order_id}/${Date.now()}_${safeOriginalName}`;
@@ -116,7 +101,6 @@ exports.router.put("/update/status/:id", upload_1.upload.single("image"), async 
             publicUrl =
                 `https://storage.googleapis.com/${firebase_1.bucket.name}/${fileName}`;
         }
-<<<<<<< HEAD
         let didUpdate = false;
         let customerId = null;
         await firebase_1.db.runTransaction(async (tx) => {
@@ -124,11 +108,6 @@ exports.router.put("/update/status/:id", upload_1.upload.single("image"), async 
             const freshOrderSnap = await tx.get(orderRef);
             if (!freshOrderSnap.exists) {
                 throw new Error("ORDER_NOT_FOUND");
-=======
-        if (status === "pickup_completed") {
-            if (!rider_id) {
-                return res.status(400).json({ ok: false, message: "กรุณาระบุ rider_id" });
->>>>>>> origin/main
             }
             const freshOrderData = freshOrderSnap.data();
             if (freshOrderData.status === status) {
@@ -257,12 +236,7 @@ exports.router.put("/update/status/:id", upload_1.upload.single("image"), async 
             catch (error) {
                 console.error("send notification error:", error);
             }
-            await notification_1.NotificationService.sendToUser(orderData.customer_id?.id ?? "", "customer", "ไรเดอร์รับผ้าเรียบร้อยแล้ว", "ไรเดอร์รับผ้าของคุณเรียบร้อยแล้ว กำลังนำไปส่งที่ร้านซัก/อบ", {
-                order_id: order_id,
-                status: status
-            });
         }
-<<<<<<< HEAD
         return res.status(200).json({
             ok: true,
             message: "อัปเดตสถานะสำเร็จ",
@@ -277,73 +251,6 @@ exports.router.put("/update/status/:id", upload_1.upload.single("image"), async 
                     : undefined,
             },
         });
-=======
-        if (status === "arrived_at_shop") {
-            if (!rider_id) {
-                return res.status(400).json({ ok: false, message: "กรุณาระบุ rider_id" });
-            }
-            if (!orderData?.rider_pickup_id) {
-                updateData.rider_pickup_id = firebase_1.db.collection("riders").doc(rider_id);
-            }
-            await notification_1.NotificationService.sendToUser(orderData.customer_id?.id ?? "", "customer", "ไรเดอร์ถึงร้านแล้ว", "ไรเดอร์กำลังส่งผ้าของคุณเข้าร้านซัก/อบ", {
-                order_id: order_id,
-                status: status
-            });
-        }
-        if (status === "waiting_wash" || status === "waiting_dry") {
-            if (!rider_id) {
-                return res.status(400).json({ ok: false, message: "กรุณาระบุ rider_id" });
-            }
-            updateData.rider_pickup_id = firebase_1.db.collection("riders").doc(rider_id);
-            await notification_1.NotificationService.sendToUser(orderData.customer_id?.id ?? "", "customer", "ผ้าของคุณเข้าคิวซัก/อบแล้ว", "ผ้าของคุณเข้าคิวซัก/อบเรียบร้อยแล้ว", {
-                order_id: order_id,
-                status: status
-            });
-        }
-        if (status === "delivery_heading_to_shop") {
-            if (!rider_id) {
-                return res.status(400).json({ ok: false, message: "กรุณาระบุ rider_id" });
-            }
-            updateData.rider_delivery_id = firebase_1.db.collection("riders").doc(rider_id);
-            await notification_1.NotificationService.sendToUser(orderData.customer_id?.id ?? "", "customer", "ไรเดอร์กำลังไปรับผ้าของคุณที่ร้าน", "ไรเดอร์กำลังไปรับผ้าของคุณที่ร้านซัก/อบ", {
-                order_id: order_id,
-                status: status
-            });
-        }
-        if (status === "delivery_pickup_completed") {
-            if (!rider_id) {
-                return res.status(400).json({ ok: false, message: "กรุณาระบุ rider_id" });
-            }
-            updateData.rider_delivery_id = firebase_1.db.collection("riders").doc(rider_id);
-            await notification_1.NotificationService.sendToUser(orderData.customer_id?.id ?? "", "customer", "ไรเดอร์รับผ้าของคุณเรียบร้อยแล้ว", "ไรเดอร์รับผ้าของคุณเรียบร้อยแล้ว กำลังนำไปส่งที่บ้านของคุณ", {
-                order_id: order_id,
-                status: status
-            });
-        }
-        if (status === "delivery_in_progress") {
-            if (!rider_id) {
-                return res.status(400).json({ ok: false, message: "กรุณาระบุ rider_id" });
-            }
-            updateData.rider_delivery_id = firebase_1.db.collection("riders").doc(rider_id);
-            await notification_1.NotificationService.sendToUser(orderData.customer_id?.id ?? "", "customer", "ไรเดอร์กำลังนำผ้าของคุณไปส่ง", "ไรเดอร์กำลังนำผ้าของคุณไปส่งที่บ้านของคุณ", {
-                order_id: order_id,
-                status: status
-            });
-        }
-        if (status === "completed") {
-            if (!rider_id) {
-                return res.status(400).json({ ok: false, message: "กรุณาระบุ rider_id" });
-            }
-            updateData.rider_delivery_id = firebase_1.db.collection("riders").doc(rider_id);
-            await notification_1.NotificationService.sendToUser(orderData.customer_id?.id ?? "", "customer", "ส่งผ้าเรียบร้อยแล้ว", "ไรเดอร์ส่งผ้าของคุณเรียบร้อยแล้ว", {
-                order_id: order_id,
-                status: status
-            });
-        }
-        await orderRef.update(updateData);
-        await storeRef.update(updateStoreData);
-        return res.json({ ok: true, message: "อัปเดตสถานะสำเร็จ", data: updateData });
->>>>>>> origin/main
     }
     catch (error) {
         console.error("update order status error:", error);
@@ -721,11 +628,7 @@ exports.router.post("/accept/:id", async (req, res) => {
             firebase_1.db
                 .collection("orders")
                 .where("rider_delivery_id", "==", riderRef)
-<<<<<<< HEAD
                 .where("status", "in", activeStatuses)
-=======
-                .where("status", "==", "delivery_heading_to_shop")
->>>>>>> origin/main
                 .get(),
         ]);
         if (!riderSnap.exists) {
@@ -777,11 +680,7 @@ exports.router.post("/accept/:id", async (req, res) => {
                     "delivery_heading_to_shop";
                 tx.update(orderRef, {
                     rider_delivery_id: riderRef,
-<<<<<<< HEAD
                     status: newStatus,
-=======
-                    status: "delivery_heading_to_shop",
->>>>>>> origin/main
                     order_datetime: firebase_1.FieldValue.serverTimestamp(),
                 });
             }
@@ -792,7 +691,6 @@ exports.router.post("/accept/:id", async (req, res) => {
                 orderData.customer_id?.id ??
                     null;
         });
-<<<<<<< HEAD
         if (customerId) {
             try {
                 if (newStatus ===
@@ -817,27 +715,6 @@ exports.router.post("/accept/:id", async (req, res) => {
             }
         }
         return res.status(200).json({
-=======
-        const orderSnap = await orderRef.get();
-        const orderData = orderSnap.data();
-        if (orderData?.customer_id && orderData?.status == "pickup_in_progress") {
-            if (orderData?.customer_id) {
-                await notification_1.NotificationService.sendToUser(orderData.customer_id.id, "customer", "ไรเดอร์รับงานแล้ว", "ไรเดอร์กำลังไปรับผ้าของคุณ", {
-                    order_id: order_id,
-                    status: orderData.status
-                });
-            }
-        }
-        else if (orderData?.customer_id && orderData?.status == "delivery_heading_to_shop") {
-            if (orderData?.customer_id) {
-                await notification_1.NotificationService.sendToUser(orderData.customer_id.id, "customer", "ไรเดอร์รับงานแล้ว", "ไรเดอร์กำลังไปรับผ้าของคุณ", {
-                    order_id: order_id,
-                    status: orderData.status
-                });
-            }
-        }
-        return res.json({
->>>>>>> origin/main
             ok: true,
             message: `รับงานสำเร็จ! (งานที่ ${totalActive + 1}/${max_order})`,
             data: {

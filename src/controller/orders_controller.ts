@@ -122,6 +122,24 @@ const newOrder: Order = {
   order_datetime: Timestamp.now(),
 };
 await orderRef.set(newOrder);
+
+try {
+  await NotificationService.sendToUser(
+    store_id,
+    "store",
+    "มีออเดอร์ใหม่",
+    "มีลูกค้าสร้างออเดอร์ใหม่ กรุณาตรวจสอบและยืนยันออเดอร์",
+    {
+      order_id: orderRef.id,
+      customer_id,
+      status: "pending_confirmation",
+      type: "new_order"
+    }
+  );
+} catch (e) {
+  console.error("Send new order notification to store error:", e);
+}
+
 return res.status(201).json({
   ok: true,
   message: "สร้างออเดอร์สำเร็จ",
@@ -156,7 +174,7 @@ router.put("/cancel/:id", async (req, res) => {
 
     const orderData = orderSnap.data()!;
 
-    // ตรวจสอบว่าเป็นออเดอร์ของลูกค้าคนนี้หรือไม่
+
     if (orderData.customer_id?.id !== customerId) {
       return res.status(403).json({
         ok: false,
@@ -164,7 +182,7 @@ router.put("/cancel/:id", async (req, res) => {
       });
     }
 
-    // ต้องเป็นสถานะ pending_confirmation เท่านั้น
+
     if (orderData.status !== "pending_confirmation") {
       return res.status(400).json({
         ok: false,
@@ -172,7 +190,6 @@ router.put("/cancel/:id", async (req, res) => {
       });
     }
 
-    // ตรวจสอบ order_datetime
     if (!orderData.order_datetime) {
       return res.status(400).json({
         ok: false,
@@ -197,11 +214,36 @@ router.put("/cancel/:id", async (req, res) => {
   });
 }
 
-    // ผ่าน 5 นาทีแล้ว -> ยกเลิกได้
-    await orderRef.update({
-      status: "cancelled",
-      cancelled_at: Timestamp.now(),
-    });
+  await orderRef.update({
+  status: "cancelled",
+  cancelled_at: Timestamp.now(),
+});
+
+const targetStoreId = orderData.store_id?.id;
+
+if (targetStoreId) {
+  try {
+    await NotificationService.sendToUser(
+      targetStoreId,
+      "store",
+      "ลูกค้ายกเลิกออเดอร์",
+      "ลูกค้าได้ยกเลิกออเดอร์ กรุณาตรวจสอบรายละเอียด",
+      {
+        order_id: orderId,
+        customer_id: customerId,
+        status: "cancelled",
+        type: "order_cancelled"
+      }
+    );
+  } catch (e) {
+    console.error("Send cancel notification to store error:", e);
+  }
+}
+
+return res.status(200).json({
+  ok: true,
+  message: "ยกเลิกออเดอร์สำเร็จ",
+});
 
     return res.status(200).json({
       ok: true,

@@ -27,7 +27,6 @@ exports.router.post("/register", async (req, res) => {
         });
     }
 });
-<<<<<<< HEAD
 exports.router.get("/history", async (req, res) => {
     try {
         const { user_id, user_role, limit } = req.query;
@@ -73,5 +72,3 @@ exports.router.get("/unread_count", async (req, res) => {
         return res.status(500).json({ ok: false, message: "server error" });
     }
 });
-=======
->>>>>>> origin/main
