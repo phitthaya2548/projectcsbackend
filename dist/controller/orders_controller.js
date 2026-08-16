@@ -9,12 +9,15 @@ const firebase_1 = require("../config/firebase");
 const firestore_1 = require("firebase-admin/firestore");
 const haversine_1 = require("../services/haversine");
 const notification_1 = require("../services/notification");
+<<<<<<< HEAD
 const dayjs_1 = __importDefault(require("dayjs"));
 const utc_1 = __importDefault(require("dayjs/plugin/utc"));
 const timezone_1 = __importDefault(require("dayjs/plugin/timezone"));
 dayjs_1.default.extend(utc_1.default);
 dayjs_1.default.extend(timezone_1.default);
 const TZ = "Asia/Bangkok";
+=======
+>>>>>>> origin/main
 exports.router = (0, express_1.Router)();
 exports.router.post("/create", async (req, res) => {
     try {
@@ -208,9 +211,14 @@ exports.router.post("/store/accept/:id", async (req, res) => {
         }
         const updteData = {
             status: "waiting_pickup",
+<<<<<<< HEAD
             order_datetime: firestore_1.Timestamp.now(),
         };
         await orderRef.update(updteData);
+=======
+            order_datetime: firestore_1.FieldValue.serverTimestamp(),
+        });
+>>>>>>> origin/main
         if (Storedata?.customer_id) {
             await notification_1.NotificationService.sendToUser(Storedata.customer_id.id, "customer", "ร้านยืนยันออเดอร์แล้ว", "ร้านยืนยันออเดอร์ของคุณแล้ว กำลังรอไรเดอร์มารับผ้า", {
                 order_id: orderId,
@@ -239,6 +247,10 @@ exports.router.post("/store/cancel/:id", async (req, res) => {
             return res.status(404).json({ ok: false, message: "ไม่พบออเดอร์" });
         }
         const data = orderSnap.data();
+<<<<<<< HEAD
+=======
+        // ตรวจสอบว่าออเดอร์นี้เป็นของร้านที่กดยกเลิกจริง
+>>>>>>> origin/main
         if (store_id && data.store_id?.id !== store_id) {
             return res.status(403).json({ ok: false, message: "ออเดอร์นี้ไม่ใช่ของร้านค้านี้" });
         }
@@ -563,6 +575,7 @@ exports.router.get("/store/:id/reviews", async (req, res) => {
                 },
             });
         }
+<<<<<<< HEAD
         const customerIds = [
             ...new Set(reviewsSnap.docs
                 .map((doc) => doc.data().customer_id?.id)
@@ -598,15 +611,52 @@ exports.router.get("/store/:id/reviews", async (req, res) => {
                     : null,
                 reviewer_name: customerData?.fullname ??
                     "ผู้ใช้ไม่ระบุชื่อ",
+=======
+        const customerIdSet = new Set();
+        for (const doc of reviewsSnap.docs) {
+            const id = doc.data().customer_id?.id;
+            if (id)
+                customerIdSet.add(id);
+        }
+        const customerIds = [...customerIdSet];
+        const customerMap = new Map();
+        if (customerIds.length > 0) {
+            const customerSnaps = await Promise.all(customerIds.map((id) => firebase_1.db.collection("customers").doc(id).get()));
+            customerSnaps.forEach((snap) => {
+                if (snap.exists)
+                    customerMap.set(snap.id, snap.data());
+            });
+        }
+        let ratingSum = 0;
+        const reviews = reviewsSnap.docs.map((doc) => {
+            const data = doc.data();
+            const customerId = data.customer_id?.id ?? null;
+            const customerData = customerId ? customerMap.get(customerId) ?? null : null;
+            const rating = typeof data.rating === "number" ? data.rating : 0;
+            ratingSum += rating;
+            return {
+                review_id: doc.id,
+                rating: data.rating,
+                comment: data.comment ?? null,
+                reviewed_at: data.reviewed_at
+                    ? new Date(data.reviewed_at.seconds * 1000).toISOString()
+                    : null,
+                reviewer_name: customerData?.fullname ?? "ผู้ใช้ไม่ระบุชื่อ",
+>>>>>>> origin/main
                 reviewer_image: customerData?.profile_image ?? "",
             };
         });
         const reviewCount = reviewsSnap.size;
+<<<<<<< HEAD
         const avgRating = reviewCount > 0
             ? ratingSum / reviewCount
             : 0;
         return res.status(200).json({
             ok: true,
+=======
+        const avgRating = reviewCount > 0 ? ratingSum / reviewCount : 0;
+        return res.json({
+>>>>>>> origin/main
             data: {
                 avg_rating: Number(avgRating.toFixed(2)),
                 review_count: reviewCount,

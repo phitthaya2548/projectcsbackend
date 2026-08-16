@@ -46,16 +46,23 @@ exports.router.get("/profile/:customerId", async (req, res) => {
 exports.router.put("/profile/:id", upload_js_1.upload.single("profile_image"), async (req, res) => {
     try {
         const customerId = req.params.id;
+<<<<<<< HEAD
         const customerRef = firebase_js_1.db
             .collection("customers")
             .doc(customerId);
         const customerSnap = await customerRef.get();
         if (!customerSnap.exists) {
+=======
+        const customerref = firebase_js_1.db.collection("customers").doc(customerId);
+        const resultcustomer = await customerref.get();
+        if (!resultcustomer.exists) {
+>>>>>>> origin/main
             return res.status(404).json({
                 ok: false,
                 message: "ไม่พบลูกค้า",
             });
         }
+<<<<<<< HEAD
         const currentData = customerSnap.data();
         const { fullname, email, phone, gender, birthday, } = req.body;
         const update = {};
@@ -68,15 +75,27 @@ exports.router.put("/profile/:id", upload_js_1.upload.single("profile_image"), a
         if (currentData.google_id &&
             email !== undefined &&
             emailNorm !== currentEmailNorm) {
+=======
+        const currentDatacus = resultcustomer.data();
+        const { fullname, email, phone, gender, birthday } = req.body;
+        const update = {};
+        const emailNorm = typeof email === "string" ? email.trim().toLowerCase() : "";
+        if (currentDatacus.google_id && email !== undefined && email !== currentDatacus.email) {
+>>>>>>> origin/main
             return res.status(400).json({
                 ok: false,
                 message: "บัญชี Google ไม่สามารถแก้ไขอีเมลได้",
             });
         }
+<<<<<<< HEAD
         if (!currentData.google_id &&
             email !== undefined &&
             emailNorm) {
             const emailSnap = await firebase_js_1.db
+=======
+        if (!currentDatacus.google_id && email !== undefined && emailNorm) {
+            const q = await firebase_js_1.db
+>>>>>>> origin/main
                 .collection("customers")
                 .where("email", "==", emailNorm)
                 .limit(1)
@@ -125,6 +144,7 @@ exports.router.put("/profile/:id", upload_js_1.upload.single("profile_image"), a
             update.profile_image =
                 `https://storage.googleapis.com/${firebase_js_1.bucket.name}/${file.name}`;
         }
+<<<<<<< HEAD
         await customerRef.update(update);
         const updatedSnap = await customerRef.get();
         const data = updatedSnap.data();
@@ -135,6 +155,14 @@ exports.router.put("/profile/:id", upload_js_1.upload.single("profile_image"), a
                 .toISOString()
                 .slice(0, 10)
             : rawBirthday ?? null;
+=======
+        await customerref.set(update, { merge: true });
+        const customerSnapshot = await customerref.get();
+        const data = customerSnapshot.data();
+        const birthdayOut = data.birthday?.toDate?.()
+            ? data.birthday.toDate().toISOString().slice(0, 10)
+            : data.birthday ?? null;
+>>>>>>> origin/main
         return res.json({
             ok: true,
             customer_id: updatedSnap.id,
@@ -332,6 +360,7 @@ exports.router.post("/addresses/:id", async (req, res) => {
             });
             batch.set(ref, dataAddress);
             await batch.commit();
+            await batch.commit();
         }
         else {
             await ref.set(dataAddress);
@@ -362,6 +391,7 @@ exports.router.get("/addresses/active/:id", async (req, res) => {
         const customerRef = firebase_js_1.db
             .collection("customers")
             .doc(customerId);
+<<<<<<< HEAD
         const customerSnap = await customerRef.get();
         if (!customerSnap.exists) {
             return res.status(404).json({
@@ -370,18 +400,29 @@ exports.router.get("/addresses/active/:id", async (req, res) => {
             });
         }
         const addressSnap = await firebase_js_1.db
+=======
+        const customersnap = await firebase_js_1.db
+>>>>>>> origin/main
             .collection("customer_addresses")
             .where("customer_id", "==", customerRef)
             .where("status", "==", true)
             .limit(1)
             .get();
+<<<<<<< HEAD
         if (addressSnap.empty) {
+=======
+        if (customersnap.empty) {
+>>>>>>> origin/main
             return res.json({
                 ok: true,
                 data: null,
             });
         }
+<<<<<<< HEAD
         const doc = addressSnap.docs[0];
+=======
+        const doc = customersnap.docs[0];
+>>>>>>> origin/main
         const data = doc.data();
         return res.json({
             ok: true,
@@ -410,6 +451,7 @@ exports.router.get("/addresses/:id", async (req, res) => {
         const customerRef = firebase_js_1.db
             .collection("customers")
             .doc(customerId);
+<<<<<<< HEAD
         const customerSnap = await customerRef.get();
         if (!customerSnap.exists) {
             return res.status(404).json({
@@ -418,12 +460,20 @@ exports.router.get("/addresses/:id", async (req, res) => {
             });
         }
         const addressSnap = await firebase_js_1.db
+=======
+        const customersnap = await firebase_js_1.db
+>>>>>>> origin/main
             .collection("customer_addresses")
             .where("customer_id", "==", customerRef)
             .orderBy("status", "desc")
             .get();
+<<<<<<< HEAD
         const data = addressSnap.docs.map(doc => {
             const dataaddr = doc.data();
+=======
+        const data = customersnap.docs.map(doc => {
+            const d = doc.data();
+>>>>>>> origin/main
             return {
                 address_id: doc.id,
                 customer_id: dataaddr.customer_id.id,
@@ -453,8 +503,13 @@ exports.router.put("/addresses/update/:id", async (req, res) => {
         const addressRef = firebase_js_1.db
             .collection("customer_addresses")
             .doc(id);
+<<<<<<< HEAD
         const addressSnap = await addressRef.get();
         if (!addressSnap.exists) {
+=======
+        const addresssnap = await addressRef.get();
+        if (!addresssnap.exists) {
+>>>>>>> origin/main
             return res.status(404).json({
                 ok: false,
                 message: "Address not found",
@@ -571,7 +626,13 @@ exports.router.put("/addresses/status/:id", async (req, res) => {
             .where("status", "==", true)
             .get();
         const batch = firebase_js_1.db.batch();
+<<<<<<< HEAD
         defaultAddress.docs.forEach(d => batch.update(d.ref, { status: false }));
+=======
+        // ทำให้ตัวอื่นไม่ใช่ที่อยู่หลัก
+        defaultAddress.docs.forEach(d => batch.update(d.ref, { status: false }));
+        // ให้ตัวที่แก้ไขเป้นที่อยู่หลัก
+>>>>>>> origin/main
         batch.update(addressRef, { status: true });
         await batch.commit();
         res.json({ ok: true });

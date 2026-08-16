@@ -81,8 +81,14 @@ export class NotificationService {
       try {
         await messaging.send({
           token,
-          notification: { title, body },
-          data: { ...data, notification_id: notifRef.id },
+
+          notification: {
+            title,
+            body,
+          },
+
+          data,
+
           android: {
             priority: "high",
             notification: {

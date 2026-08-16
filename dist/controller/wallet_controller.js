@@ -217,7 +217,11 @@ exports.router.get("/history/paid_orders/:customer_id", async (req, res) => {
         }
         const paidOrdersSnap = await firebase_1.db.collection("orders")
             .where("customer_id", "==", customerRef)
+<<<<<<< HEAD
             .where("status", "in", ["completed", "payment_completed", "washing", "drying", "waiting_delivery", "delivery_in_progress"])
+=======
+            .where("status", "in", ["completed", "payment_completed"])
+>>>>>>> origin/main
             .orderBy("order_datetime", "desc")
             .limit(50)
             .get();

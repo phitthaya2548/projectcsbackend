@@ -22,7 +22,10 @@ const applicant_store_controller_1 = require("./controller/applicant_store_contr
 const report_store_controller_1 = require("./controller/report_store_controller");
 const history_order_store_controller_1 = require("./controller/history_order_store_controller");
 const notification_controller_1 = require("./controller/notification_controller");
+<<<<<<< HEAD
 const employee_store_controller_1 = require("./controller/employee_store_controller");
+=======
+>>>>>>> origin/main
 exports.app = (0, express_1.default)();
 exports.app.use(express_1.default.json({ limit: "1mb" }));
 exports.app.use(express_1.default.urlencoded({ extended: true }));
@@ -46,7 +49,10 @@ exports.app.use("/history/order", history_order_store_controller_1.router);
 exports.app.use("/employee_regis_store", applicant_store_controller_1.router);
 exports.app.use("/password", password_controller_1.router);
 exports.app.use("/notification", notification_controller_1.router);
+<<<<<<< HEAD
 exports.app.use("/employees", employee_store_controller_1.router);
+=======
+>>>>>>> origin/main
 exports.app.use((_req, res) => {
     res.status(404).json({
         ok: false,
