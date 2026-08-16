@@ -9,6 +9,7 @@ const firebase_1 = require("../config/firebase");
 const firebase_admin_1 = __importDefault(require("firebase-admin"));
 const machine_1 = require("../modules/machine");
 const upload_1 = require("../middlewares/upload");
+const store_1 = require("../modules/store");
 exports.router = (0, express_1.Router)();
 exports.router.put("/profile/:id", upload_1.upload.single("profile_image"), async (req, res) => {
     try {
@@ -22,7 +23,7 @@ exports.router.put("/profile/:id", upload_1.upload.single("profile_image"), asyn
                 message: "ไม่พบร้านค้า"
             });
         }
-        const { store_name, email, phone, address, opening_hours, closed_hours, service_radius, latitude, longitude, facebook, line_id, status, delivery_min, delivery_max } = req.body;
+        const { store_name, email, phone, address, opening_hours, closed_hours, service_radius, latitude, longitude, facebook, line_id, status, delivery_min, delivery_max, detergent_price } = req.body;
         const emailNorm = email?.trim().toLowerCase() || "";
         if (email !== undefined) {
             const [riderSnap, storeSnap, customerSnap, staffSnap] = await Promise.all([
@@ -61,6 +62,11 @@ exports.router.put("/profile/:id", upload_1.upload.single("profile_image"), asyn
             update.line_id = line_id || null;
         if (status !== undefined)
             update.status = status;
+        if (detergent_price !== undefined) {
+            const detergent = Number(detergent_price);
+            if (!isNaN(detergent))
+                update.detergent_price = detergent;
+        }
         if (service_radius !== undefined) {
             const sr = Number(service_radius);
             if (!isNaN(sr))
@@ -126,6 +132,7 @@ exports.router.put("/profile/:id", upload_1.upload.single("profile_image"), asyn
                 wallet_balance: Number(data.wallet_balance ?? 0),
                 delivery_min: Number(data.delivery_min ?? 0),
                 delivery_max: Number(data.delivery_max ?? 0),
+                detergent_price: Number(data.detergent_price ?? 0),
             }
         });
     }
@@ -172,6 +179,7 @@ exports.router.get("/profile/:id", async (req, res) => {
                 delivery_max: Number(data.delivery_max ?? 0),
                 machine_wash_count: Number(data.machine_wash_count ?? 0),
                 machine_dry_count: Number(data.machine_dry_count ?? 0),
+                detergent_price: Number(data.detergent_price ?? 0),
             }
         });
     }
@@ -250,8 +258,7 @@ exports.router.put("/profile/status/:id", async (req, res) => {
                 message: "กรุณาระบุสถานะร้าน",
             });
         }
-        const allowedStatus = ["เปิดร้าน", "ปิดชั่วคราว"];
-        if (!allowedStatus.includes(status)) {
+        if (!store_1.StoreStatus.includes(status)) {
             return res.status(400).json({
                 ok: false,
                 message: "สถานะไม่ถูกต้อง",
@@ -303,7 +310,7 @@ exports.router.get("/profile/status/:id", async (req, res) => {
             message: "ดึงสถานะร้านสำเร็จ",
             data: {
                 store_id: storeId,
-                status: storeData?.status ?? "ปิดชั่วคราว",
+                status: storeData?.status ?? "TEMP_CLOSED",
             },
         });
     }
@@ -721,30 +728,6 @@ exports.router.get("/machines/:id", async (req, res) => {
         return res.status(500).json({
             ok: false,
             message: "Server error",
-        });
-    }
-});
-exports.router.delete("/machine/delete/:id", async (req, res) => {
-    try {
-        const machineId = req.params.id;
-        const machineRef = firebase_1.db.collection("machines").doc(machineId);
-        const snap = await machineRef.get();
-        if (!snap.exists) {
-            return res.status(404).json({
-                ok: false,
-                message: "ไม่พบเครื่อง",
-            });
-        }
-        await machineRef.delete();
-        return res.json({
-            ok: true,
-            message: "ลบเครื่องสำเร็จ",
-        });
-    }
-    catch (e) {
-        return res.status(500).json({
-            ok: false,
-            message: e.message || "Server error",
         });
     }
 });

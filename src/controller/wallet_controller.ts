@@ -259,7 +259,7 @@ router.get("/history/paid_orders/:customer_id", async (req, res) => {
 
     const paidOrdersSnap = await db.collection("orders")
       .where("customer_id", "==", customerRef)
-      .where("status", "in", ["completed", "payment_completed"])
+      .where("status", "in", ["completed", "payment_completed","washing","drying","waiting_delivery","delivery_in_progress"])
       .orderBy("order_datetime", "desc")
       .limit(50)
       .get();

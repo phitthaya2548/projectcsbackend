@@ -1,4 +1,4 @@
-export type StaffStatus = "ONLINE" | "TEMP_CLOSEDTEMP_CLOSED";
+export type StaffStatus = "ONLINE" | "TEMP_CLOSED" | "pending";
 export type LaundryStaff = {
   staff_id: string;
   store_id: FirebaseFirestore.DocumentReference | null;

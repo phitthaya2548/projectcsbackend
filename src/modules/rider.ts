@@ -1,4 +1,4 @@
-export type RiderStatus = "ONLINE" | "TEMP_CLOSED";
+export type RiderStatus = "ONLINE" | "TEMP_CLOSED" |"pending";
 export type Rider = {
   rider_id: string;
   store_id: FirebaseFirestore.DocumentReference | null;

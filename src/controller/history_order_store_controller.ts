@@ -1,13 +1,26 @@
 import { Router } from "express";
-import { db } from "../config/firebase";
+import { db } from "../config/firebase.js";
 
 export const router = Router();
+
 router.get("/customers/:id", async (req, res) => {
   try {
-    const storeId = req.params.id ;
-    const search = (req.query.q as string || "").trim().toLowerCase();
+    const storeId = req.params.id;
+    const search = String(req.query.q ?? "")
+      .trim()
+      .toLowerCase();
 
-    const storeRef = db.collection("stores").doc(storeId);
+    if (!storeId) {
+      return res.status(400).json({
+        ok: false,
+        message: "กรุณาระบุ store_id",
+      });
+    }
+
+    const storeRef = db
+      .collection("stores")
+      .doc(storeId);
+
     const storeSnap = await storeRef.get();
 
     if (!storeSnap.exists) {
@@ -22,12 +35,25 @@ router.get("/customers/:id", async (req, res) => {
       .where("store_id", "==", storeRef)
       .get();
 
-    const customerRefMap = new Map<string, FirebaseFirestore.DocumentReference>();
+    const customerRefMap =
+      new Map<
+        string,
+        FirebaseFirestore.DocumentReference
+      >();
 
     ordersSnap.forEach((doc) => {
-      const custRef = doc.data().customer_id as FirebaseFirestore.DocumentReference;
-      if (custRef) {
-        customerRefMap.set(custRef.id, custRef);
+      const data = doc.data();
+
+      const customerRef =
+        data.customer_id as
+          | FirebaseFirestore.DocumentReference
+          | undefined;
+
+      if (customerRef?.id) {
+        customerRefMap.set(
+          customerRef.id,
+          customerRef,
+        );
       }
     });
 
@@ -40,35 +66,48 @@ router.get("/customers/:id", async (req, res) => {
     }
 
     const customerDocs = await Promise.all(
-      Array.from(customerRefMap.values()).map((ref) => ref.get())
+      Array.from(
+        customerRefMap.values(),
+      ).map((ref) => ref.get()),
     );
 
     let customers = customerDocs
       .filter((doc) => doc.exists)
       .map((doc) => {
-        const data = doc.data() as any;
+        const data = doc.data();
+
         return {
-          customer_id: data.customer_id ?? doc.id,
-          fullname: data.fullname ?? "",
-          email: data.email ?? "",
-          phone: data.phone ?? "",
-          profile_image: data.profile_image ?? "",
+          customer_id: doc.id,
+          fullname: data?.fullname ?? "",
+          email: data?.email ?? "",
+          phone: data?.phone ?? "",
+          profile_image:
+            data?.profile_image ?? "",
         };
       });
 
-    
     if (search) {
-      customers = customers.filter((c) => {
-        const fullname = c.fullname.toLowerCase();
-        const email = c.email.toLowerCase();
-        const phone = c.phone.toLowerCase();
+      customers = customers.filter(
+        (customer) => {
+          const fullname = String(
+            customer.fullname,
+          ).toLowerCase();
 
-        return (
-          fullname.includes(search) ||
-          email.includes(search) ||
-          phone.includes(search)
-        );
-      });
+          const email = String(
+            customer.email,
+          ).toLowerCase();
+
+          const phone = String(
+            customer.phone,
+          ).toLowerCase();
+
+          return (
+            fullname.includes(search) ||
+            email.includes(search) ||
+            phone.includes(search)
+          );
+        },
+      );
     }
 
     return res.json({
@@ -77,14 +116,15 @@ router.get("/customers/:id", async (req, res) => {
       data: customers,
     });
   } catch (e: any) {
-    console.error("GET STORE CUSTOMERS ERROR:", e);
+    console.error(
+      "GET STORE CUSTOMERS ERROR:",
+      e,
+    );
+
     return res.status(500).json({
       ok: false,
-      message: e.message ?? "Server error",
+      message:
+        e.message ?? "Server error",
     });
   }
 });
-
-
-
-

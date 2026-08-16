@@ -2,7 +2,7 @@ import express from "express";
 import "dotenv/config";
 import { router as register_customer } from "./controller/register_customer_controller";
 import { router as register_store } from "./controller/register_store_controller";
-import { router as login } from "./controller/auth_controller";
+import { router as login } from "./controller/customer_auth_controller";
 import { router as customer } from "./controller/customer_controller";
 import { router as slipok } from "./controller/wallet_controller";
 import { router as rider } from "./controller/rider_controller";
@@ -16,6 +16,7 @@ import { router as applicant_store} from "./controller/applicant_store_controlle
 import { router as report } from "./controller/report_store_controller"
 import { router as history_order_cus} from "./controller/history_order_store_controller"
 import { router as notification } from "./controller/notification_controller"
+import {router as employees} from "./controller/employee_store_controller";
 export const app = express();
 
 app.use(express.json({ limit: "1mb" }));
@@ -42,7 +43,7 @@ app.use("/history/order",history_order_cus);
 app.use("/employee_regis_store",applicant_store);
 app.use("/password", resetpassword);
 app.use("/notification", notification);
-
+app.use("/employees",employees);
 app.use((_req, res) => {
   res.status(404).json({
     ok: false,

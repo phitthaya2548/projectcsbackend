@@ -15,7 +15,7 @@ export type OrderStatus =
   | "delivery_heading_to_shop" // กำลังไปที่ร้าน
 | "delivery_pickup_completed"    // รับผ้าที่ร้านแล้ว
     | "delivery_in_progress"   // กำลังจัดส่ง
-  | "completedcompleted"              // ส่งถึงลูกค้าแล้ว
+  | "completed"              // ส่งถึงลูกค้าแล้ว
   | "cancelled";
 
 
@@ -50,5 +50,5 @@ export interface Order {
   detergent_price: number | null;
   status: OrderStatus;
 
-  order_datetime: Timestamp;
+  order_datetime:  FirebaseFirestore.Timestamp;
 }

@@ -39,10 +39,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.router = void 0;
 const express_1 = require("express");
 const bcrypt = __importStar(require("bcrypt"));
+const crypto_1 = __importDefault(require("crypto"));
 const firebase_1 = require("../config/firebase");
 const generateOtp_1 = __importDefault(require("../utils/generateOtp"));
 const mailer_1 = require("../utils/mailer");
 exports.router = (0, express_1.Router)();
+function hashOtp(otp) {
+    return crypto_1.default.createHash("sha256").update(otp).digest("hex");
+}
 async function findUserByEmail(email) {
     const checks = await Promise.all([
         firebase_1.db.collection("customers").where("email", "==", email).limit(1).get(),
@@ -74,15 +78,14 @@ exports.router.post("/forgot_password", async (req, res) => {
             });
         }
         const otp = (0, generateOtp_1.default)(6);
-        const otpHash = await bcrypt.hash(otp, 10);
+        const otpHash = hashOtp(otp);
         const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
         const oldSnap = await firebase_1.db
             .collection("password_resets")
             .where("email", "==", email)
             .get();
-        for (const doc of oldSnap.docs) {
-            await doc.ref.delete();
-        }
+        // ลบ OTP เก่าแบบขนาน แทนการ loop ทีละตัว
+        await Promise.all(oldSnap.docs.map((doc) => doc.ref.delete()));
         const resetData = {
             email: email,
             otp: otpHash,
@@ -91,7 +94,14 @@ exports.router.post("/forgot_password", async (req, res) => {
         };
         const resetRef = firebase_1.db.collection("password_resets").doc();
         await resetRef.set(resetData);
-        await mailer_1.mailer.sendMail({
+        // ตอบกลับผู้ใช้ทันที ไม่ต้องรอส่งอีเมลเสร็จ
+        res.json({
+            ok: true,
+            message: "หากอีเมลนี้มีอยู่ในระบบ จะมี OTP ถูกส่งไป",
+        });
+        // ส่งอีเมลแบบ background (fire-and-forget) ไม่บล็อก response
+        mailer_1.mailer
+            .sendMail({
             from: `"WashAndDry Support" <${process.env.MAIL_FROM}>`,
             to: email,
             subject: "รหัส OTP สำหรับรีเซ็ตรหัสผ่าน",
@@ -104,11 +114,11 @@ exports.router.post("/forgot_password", async (req, res) => {
       <p>OTP นี้จะหมดอายุใน 5 นาที</p>
     </div>
   `,
+        })
+            .catch((err) => {
+            console.error("send mail failed:", err);
         });
-        return res.json({
-            ok: true,
-            message: "หากอีเมลนี้มีอยู่ในระบบ จะมี OTP ถูกส่งไป",
-        });
+        return;
     }
     catch (e) {
         console.error("forgot-password error:", e);
@@ -161,7 +171,7 @@ exports.router.post("/reset_password", async (req, res) => {
                 message: "OTP หมดอายุแล้ว",
             });
         }
-        const isMatch = await bcrypt.compare(otp, resetData.otp);
+        const isMatch = hashOtp(otp) === resetData.otp;
         if (!isMatch) {
             return res.status(400).json({
                 ok: false,

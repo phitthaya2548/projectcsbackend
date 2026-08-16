@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { bucket, db, FieldValue } from "../config/firebase";
-import { Order, } from "../modules/order";
+import { Order, OrderStatus, } from "../modules/order";
 import { upload } from "../middlewares/upload";
 import { DistanceService } from "../services/haversine";
 import { LaundryStaff } from "../modules/LaundryStaff";
@@ -17,181 +17,400 @@ router.put(
   "/update/status/:id",
   upload.single("image"),
   async (req, res) => {
+    let uploadedFilePath: string | null = null;
+    let transactionCommitted = false;
+
     try {
       const order_id = req.params.id as string;
       const { status, rider_id } = req.body;
 
       if (!status) {
-        return res.status(400).json({ ok: false, message: "กรุณาระบุสถานะ" });
+        return res.status(400).json({
+          ok: false,
+          message: "กรุณาระบุสถานะ",
+        });
+      }
+
+      const allowedStatuses = new Set([
+        "pickup_completed",
+        "arrived_at_shop",
+        "waiting_wash",
+        "waiting_dry",
+        "delivery_heading_to_shop",
+        "delivery_pickup_completed",
+        "delivery_in_progress",
+        "completed",
+      ]);
+
+      if (!allowedStatuses.has(status)) {
+        return res.status(400).json({
+          ok: false,
+          message: "สถานะไม่ถูกต้อง",
+        });
+      }
+
+      if (!rider_id) {
+        return res.status(400).json({
+          ok: false,
+          message: "กรุณาระบุ rider_id",
+        });
       }
 
       const orderRef = db.collection("orders").doc(order_id);
-      const orderSnap = await orderRef.get();
+      const riderRef = db.collection("riders").doc(rider_id);
+
+      const [orderSnap, riderSnap] = await Promise.all([
+        orderRef.get(),
+        riderRef.get(),
+      ]);
 
       if (!orderSnap.exists) {
-        return res.status(404).json({ ok: false, message: "ไม่พบออเดอร์" });
-      }
-      const storeRef = orderSnap.data()?.store_id;
-      if (!storeRef) {
-        return res.status(404).json({ ok: false, message: "ไม่พบร้านค้า" });
+        return res.status(404).json({
+          ok: false,
+          message: "ไม่พบออเดอร์",
+        });
       }
 
+      if (!riderSnap.exists) {
+        return res.status(404).json({
+          ok: false,
+          message: "ไม่พบไรเดอร์",
+        });
+      }
 
       const orderData = orderSnap.data() as Order;
-      const total_amount = orderData?.service_price + orderData?.delivery_price + (orderData?.detergent_price ?? 0);
-      const updateData: UpdateData<Order> = {
-        status,
-        order_datetime: FieldValue.serverTimestamp(),
 
-      };
-      const updateStoreData: UpdateData<StoreData> = {
-        wallet_balance: FieldValue.increment(total_amount),
+      if (!orderData.store_id) {
+        return res.status(404).json({
+          ok: false,
+          message: "ไม่พบร้านค้า",
+        });
       }
 
-      
+      if (orderData.status === status) {
+        return res.status(200).json({
+          ok: true,
+          message: "ออเดอร์อยู่ในสถานะนี้แล้ว",
+          data: {
+            order_id,
+            status,
+          },
+        });
+      }
+
+      const imageStatuses = new Set([
+        "pickup_completed",
+        "completed",
+      ]);
+
+      if (req.file && !imageStatuses.has(status)) {
+        return res.status(400).json({
+          ok: false,
+          message: "สถานะนี้ไม่รองรับการอัปโหลดรูปภาพ",
+        });
+      }
+
+      let publicUrl: string | null = null;
+
       if (req.file) {
-        const fileName = `orders/${order_id}/${Date.now()}_${req.file.originalname}`;
+        const safeOriginalName =
+          req.file.originalname.replace(/[^\w.\-]/g, "_");
+
+        const fileName =
+          `orders/${order_id}/${Date.now()}_${safeOriginalName}`;
+
+        uploadedFilePath = fileName;
+
         const file = bucket.file(fileName);
-        await file.save(req.file.buffer, { metadata: { contentType: req.file.mimetype } });
+
+        await file.save(req.file.buffer, {
+          metadata: {
+            contentType: req.file.mimetype,
+          },
+        });
+
         await file.makePublic();
-        const publicUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
 
-        if (status === "pickup_completed") updateData.before_wash_image = publicUrl;
-        if (status === "completed") updateData.after_wash_image = publicUrl;
+        publicUrl =
+          `https://storage.googleapis.com/${bucket.name}/${fileName}`;
       }
 
+      let didUpdate = false;
+      let customerId: string | null = null;
 
-      if (status === "pickup_completed") {
-        if (!rider_id) {
-          return res.status(400).json({ ok: false, message: "กรุณาระบุ rider_id" });
+      await db.runTransaction(async (tx) => {
+        didUpdate = false;
+
+        const freshOrderSnap = await tx.get(orderRef);
+
+        if (!freshOrderSnap.exists) {
+          throw new Error("ORDER_NOT_FOUND");
         }
-        if (!orderData?.rider_pickup_id) {
-          updateData.rider_pickup_id = db.collection("riders").doc(rider_id);
+
+        const freshOrderData =
+          freshOrderSnap.data() as Order;
+
+        if (freshOrderData.status === status) {
+          return;
         }
-        await NotificationService.sendToUser(
-          orderData.customer_id?.id ?? "",
-          "customer",
-          "ไรเดอร์รับผ้าเรียบร้อยแล้ว",
-          "ไรเดอร์รับผ้าของคุณเรียบร้อยแล้ว กำลังนำไปส่งที่ร้านซัก/อบ",
-          {
-            order_id: order_id,
-            status: status
+
+        if (!freshOrderData.store_id) {
+          throw new Error("STORE_NOT_FOUND");
+        }
+
+        const updateData: UpdateData<Order> = {
+          status: status as OrderStatus,
+          order_datetime:
+            FieldValue.serverTimestamp(),
+        };
+
+        if (status === "pickup_completed") {
+          if (!freshOrderData.rider_pickup_id) {
+            updateData.rider_pickup_id = riderRef;
           }
-        );
-      }
 
-    
-      if (status === "arrived_at_shop") {
-        if (!rider_id) {
-          return res.status(400).json({ ok: false, message: "กรุณาระบุ rider_id" });
-        }
-
-        if (!orderData?.rider_pickup_id) {
-          updateData.rider_pickup_id = db.collection("riders").doc(rider_id);
-        }
-        await NotificationService.sendToUser(
-          orderData.customer_id?.id ?? "",
-          "customer",
-          "ไรเดอร์ถึงร้านแล้ว",
-          "ไรเดอร์กำลังส่งผ้าของคุณเข้าร้านซัก/อบ",
-          {
-            order_id: order_id,
-            status: status
+          if (publicUrl) {
+            updateData.before_wash_image = publicUrl;
           }
-        );
+        }
+
+        if (status === "arrived_at_shop") {
+          if (!freshOrderData.rider_pickup_id) {
+            updateData.rider_pickup_id = riderRef;
+          }
+        }
+
+        if (
+          status === "waiting_wash" ||
+          status === "waiting_dry"
+        ) {
+          updateData.rider_pickup_id = riderRef;
+        }
+
+        if (status === "delivery_heading_to_shop") {
+          updateData.rider_delivery_id = riderRef;
+        }
+
+        if (status === "delivery_pickup_completed") {
+          updateData.rider_delivery_id = riderRef;
+        }
+
+        if (status === "delivery_in_progress") {
+          updateData.rider_delivery_id = riderRef;
+        }
+
+        if (status === "completed") {
+          updateData.rider_delivery_id = riderRef;
+
+          if (publicUrl) {
+            updateData.after_wash_image = publicUrl;
+          }
+
+          const servicePrice =
+            Number(freshOrderData.service_price ?? 0);
+          const deliveryPrice =
+            Number(freshOrderData.delivery_price ?? 0);
+          const detergentPrice =
+            Number(freshOrderData.detergent_price ?? 0);
+          const totalAmount =
+            servicePrice +
+            deliveryPrice +
+            detergentPrice;
+          if (
+            !Number.isFinite(totalAmount) ||
+            totalAmount < 0
+          ) {
+            throw new Error("INVALID_TOTAL_AMOUNT");
+          }
+
+          tx.update(freshOrderData.store_id, {
+            wallet_balance:
+              FieldValue.increment(totalAmount),
+          });
+        }
+
+        tx.update(orderRef, updateData);
+
+        customerId =
+          freshOrderData.customer_id?.id ?? null;
+
+        didUpdate = true;
+      });
+
+      transactionCommitted = true;
+
+      if (!didUpdate) {
+        if (uploadedFilePath) {
+          try {
+            await bucket
+              .file(uploadedFilePath)
+              .delete();
+          } catch (error) {
+            console.error(
+              "delete unused image error:",
+              error
+            );
+          }
+        }
+
+        return res.status(200).json({
+          ok: true,
+          message: "ออเดอร์อยู่ในสถานะนี้แล้ว",
+          data: {
+            order_id,
+            status,
+          },
+        });
       }
 
-      if (status === "waiting_wash" || status === "waiting_dry") {
-        if (!rider_id) {
-          return res.status(400).json({ ok: false, message: "กรุณาระบุ rider_id" });
+      const notificationMap: Record<
+        string,
+        {
+          title: string;
+          body: string;
         }
-        updateData.rider_pickup_id = db.collection("riders").doc(rider_id);
-        await NotificationService.sendToUser(
-          orderData.customer_id?.id ?? "",
-          "customer",
-          "ผ้าของคุณเข้าคิวซัก/อบแล้ว",
-          "ผ้าของคุณเข้าคิวซัก/อบเรียบร้อยแล้ว",
-          {
-            order_id: order_id,
-            status: status
-          }
-        );
-      }
-      if (status === "delivery_heading_to_shop") {
-        if (!rider_id) {
-          return res.status(400).json({ ok: false, message: "กรุณาระบุ rider_id" });
-        }
-        updateData.rider_delivery_id = db.collection("riders").doc(rider_id);
-        await NotificationService.sendToUser(
-          orderData.customer_id?.id ?? "",
-          "customer",
-          "ไรเดอร์กำลังไปรับผ้าของคุณที่ร้าน",
-          "ไรเดอร์กำลังไปรับผ้าของคุณที่ร้านซัก/อบ",
-          {
-            order_id: order_id,
-            status: status
-          }
-        );
-      }
-      if (status === "delivery_pickup_completed") {
-        if (!rider_id) {
-          return res.status(400).json({ ok: false, message: "กรุณาระบุ rider_id" });
-        }
-        updateData.rider_delivery_id = db.collection("riders").doc(rider_id);
-        await NotificationService.sendToUser(
-          orderData.customer_id?.id ?? "",
-          "customer",
-          "ไรเดอร์รับผ้าของคุณเรียบร้อยแล้ว",
-          "ไรเดอร์รับผ้าของคุณเรียบร้อยแล้ว กำลังนำไปส่งที่บ้านของคุณ",
-          {
-            order_id: order_id,
-            status: status
-          }
-        );
-      }
-      if (status === "delivery_in_progress") {
-        if (!rider_id) {
-          return res.status(400).json({ ok: false, message: "กรุณาระบุ rider_id" });
-        }
-        updateData.rider_delivery_id = db.collection("riders").doc(rider_id);
-        await NotificationService.sendToUser(
-          orderData.customer_id?.id ?? "",
-          "customer",
-          "ไรเดอร์กำลังนำผ้าของคุณไปส่ง",
-          "ไรเดอร์กำลังนำผ้าของคุณไปส่งที่บ้านของคุณ",
-          {
-            order_id: order_id,
-            status: status
-          }
-        );
-      }
-      
+      > = {
+        pickup_completed: {
+          title: "ไรเดอร์รับผ้าเรียบร้อยแล้ว",
+          body:
+            "ไรเดอร์รับผ้าของคุณเรียบร้อยแล้ว กำลังนำไปส่งที่ร้านซัก/อบ",
+        },
 
-      if (status === "completed") {
-        if (!rider_id) {
-          return res.status(400).json({ ok: false, message: "กรุณาระบุ rider_id" });
+        arrived_at_shop: {
+          title: "ไรเดอร์ถึงร้านแล้ว",
+          body:
+            "ไรเดอร์กำลังส่งผ้าของคุณเข้าร้านซัก/อบ",
+        },
+
+        waiting_wash: {
+          title: "ผ้าของคุณเข้าคิวซัก/อบแล้ว",
+          body:
+            "ผ้าของคุณเข้าคิวซัก/อบเรียบร้อยแล้ว",
+        },
+
+        waiting_dry: {
+          title: "ผ้าของคุณเข้าคิวซัก/อบแล้ว",
+          body:
+            "ผ้าของคุณเข้าคิวซัก/อบเรียบร้อยแล้ว",
+        },
+
+        delivery_heading_to_shop: {
+          title:
+            "ไรเดอร์กำลังไปรับผ้าของคุณที่ร้าน",
+          body:
+            "ไรเดอร์กำลังไปรับผ้าของคุณที่ร้านซัก/อบ",
+        },
+
+        delivery_pickup_completed: {
+          title:
+            "ไรเดอร์รับผ้าของคุณเรียบร้อยแล้ว",
+          body:
+            "ไรเดอร์รับผ้าของคุณเรียบร้อยแล้ว กำลังนำไปส่งที่บ้านของคุณ",
+        },
+
+        delivery_in_progress: {
+          title:
+            "ไรเดอร์กำลังนำผ้าของคุณไปส่ง",
+          body:
+            "ไรเดอร์กำลังนำผ้าของคุณไปส่งที่บ้านของคุณ",
+        },
+
+        completed: {
+          title: "ส่งผ้าเรียบร้อยแล้ว",
+          body:
+            "ไรเดอร์ส่งผ้าของคุณเรียบร้อยแล้ว",
+        },
+      };
+
+      const notification =
+        notificationMap[status];
+
+      if (customerId && notification) {
+        try {
+          await NotificationService.sendToUser(
+            customerId,
+            "customer",
+            notification.title,
+            notification.body,
+            {
+              order_id,
+              status,
+            }
+          );
+        } catch (error) {
+          console.error(
+            "send notification error:",
+            error
+          );
         }
-        updateData.rider_delivery_id = db.collection("riders").doc(rider_id);
-        await NotificationService.sendToUser(
-          orderData.customer_id?.id ?? "",
-          "customer",
-          "ส่งผ้าเรียบร้อยแล้ว",
-          "ไรเดอร์ส่งผ้าของคุณเรียบร้อยแล้ว",
-          {
-            order_id: order_id,
-            status: status
-          }
-        );
       }
 
-      await orderRef.update(updateData);
-      await storeRef.update(updateStoreData);
+      return res.status(200).json({
+        ok: true,
+        message: "อัปเดตสถานะสำเร็จ",
+        data: {
+          order_id,
+          status,
+          before_wash_image:
+            status === "pickup_completed"
+              ? publicUrl
+              : undefined,
+          after_wash_image:
+            status === "completed"
+              ? publicUrl
+              : undefined,
+        },
+      });
+    } catch (error: any) {
+      console.error(
+        "update order status error:",
+        error
+      );
 
-      return res.json({ ok: true, message: "อัปเดตสถานะสำเร็จ", data: updateData });
+      if (
+        uploadedFilePath &&
+        !transactionCommitted
+      ) {
+        try {
+          await bucket
+            .file(uploadedFilePath)
+            .delete();
+        } catch (deleteError) {
+          console.error(
+            "cleanup image error:",
+            deleteError
+          );
+        }
+      }
 
-    } catch (error) {
-      console.error(error);
-      return res.status(500).json({ ok: false, message: "server error" });
+      if (error?.message === "ORDER_NOT_FOUND") {
+        return res.status(404).json({
+          ok: false,
+          message: "ไม่พบออเดอร์",
+        });
+      }
+
+      if (error?.message === "STORE_NOT_FOUND") {
+        return res.status(404).json({
+          ok: false,
+          message: "ไม่พบร้านค้า",
+        });
+      }
+
+      if (
+        error?.message ===
+        "INVALID_TOTAL_AMOUNT"
+      ) {
+        return res.status(500).json({
+          ok: false,
+          message: "ยอดเงินออเดอร์ไม่ถูกต้อง",
+        });
+      }
+
+      return res.status(500).json({
+        ok: false,
+        message: "server error",
+      });
     }
   }
 );
@@ -199,14 +418,34 @@ router.put(
 
 router.get("/:id", async (req, res) => {
   try {
-    const rider_id = req.params.id as string;
+    const rider_id = String(req.params.id || "").trim();
+
+    if (!rider_id) {
+      return res.status(400).json({
+        ok: false,
+        message: "กรุณาระบุ rider_id",
+      });
+    }
 
     const riderLat = parseFloat(req.query.lat as string);
     const riderLng = parseFloat(req.query.lng as string);
 
-    const hasRiderLocation = !isNaN(riderLat) && !isNaN(riderLng);
+    const hasRiderLocation =
+      !isNaN(riderLat) &&
+      !isNaN(riderLng);
 
-    const riderRef = db.collection("riders").doc(rider_id);
+    const riderRef = db
+      .collection("riders")
+      .doc(rider_id);
+
+    const riderSnap = await riderRef.get();
+
+    if (!riderSnap.exists) {
+      return res.status(404).json({
+        ok: false,
+        message: "ไม่พบไรเดอร์",
+      });
+    }
 
     const activeStatuses = [
       "pickup_in_progress",
@@ -218,135 +457,239 @@ router.get("/:id", async (req, res) => {
       "delivery_heading_to_shop",
     ];
 
-    const [pickupOrdersSnap, deliveryOrdersSnap] = await Promise.all([
-      db.collection("orders")
-        .where("rider_pickup_id", "==", riderRef)
-        .where("status", "in", activeStatuses)
+    const [
+      pickupOrdersSnap,
+      deliveryOrdersSnap,
+    ] = await Promise.all([
+      db
+        .collection("orders")
+        .where(
+          "rider_pickup_id",
+          "==",
+          riderRef
+        )
+        .where(
+          "status",
+          "in",
+          activeStatuses
+        )
         .get(),
 
-      db.collection("orders")
-        .where("rider_delivery_id", "==", riderRef)
-        .where("status", "in", activeStatuses)
+      db
+        .collection("orders")
+        .where(
+          "rider_delivery_id",
+          "==",
+          riderRef
+        )
+        .where(
+          "status",
+          "in",
+          activeStatuses
+        )
         .get(),
-
     ]);
 
-    const orderDocs: FirebaseFirestore.QueryDocumentSnapshot[] = [];
+    const orderMap = new Map<
+      string,
+      FirebaseFirestore.QueryDocumentSnapshot
+    >();
 
     for (const doc of pickupOrdersSnap.docs) {
-      orderDocs.push(doc);
+      orderMap.set(doc.id, doc);
     }
 
     for (const doc of deliveryOrdersSnap.docs) {
-      let alreadyExists = false;
-
-      for (const savedDoc of orderDocs) {
-        if (savedDoc.id === doc.id) {
-          alreadyExists = true;
-          break;
-        }
-      }
-
-      if (!alreadyExists) {
-        orderDocs.push(doc);
-      }
+      orderMap.set(doc.id, doc);
     }
 
+    const orderDocs =
+      Array.from(orderMap.values());
+
     if (orderDocs.length === 0) {
-      return res.status(404).json({
-        ok: false,
-        message: "ไม่พบออเดอร์ของไรเดอร์คนนี้",
+      return res.status(200).json({
+        ok: true,
+        data: [],
       });
     }
 
     const orders = await Promise.all(
       orderDocs.map(async (orderDoc) => {
-        const orderData = orderDoc.data();
+        const orderData =
+          orderDoc.data() as Order;
 
-        const addressRef = orderData.address_id ?? null;
-        const customerRef = orderData.customer_id ?? null;
+        const addressRef =
+          orderData.address_id ?? null;
 
-        const [addressSnap, customerSnap] = await Promise.all([
-          addressRef ? addressRef.get() : null,
-          customerRef ? customerRef.get() : null,
+        const customerRef =
+          orderData.customer_id ?? null;
+
+        const [
+          addressSnap,
+          customerSnap,
+        ] = await Promise.all([
+          addressRef
+            ? addressRef.get()
+            : Promise.resolve(null),
+
+          customerRef
+            ? customerRef.get()
+            : Promise.resolve(null),
         ]);
+
         let addressText = null;
         let addressLat = null;
         let addressLng = null;
 
-        if (addressSnap && addressSnap.exists) {
-          const addressData = addressSnap.data();
+        if (
+          addressSnap &&
+          addressSnap.exists
+        ) {
+          const addressData =
+            addressSnap.data() as CustomerAddress;
 
-          addressText = addressData?.address_text ?? null;
-          addressLat = addressData?.latitude ?? null;
-          addressLng = addressData?.longitude ?? null;
+          addressText =
+            addressData?.address_text ?? null;
+
+          addressLat =
+            addressData?.latitude ?? null;
+
+          addressLng =
+            addressData?.longitude ?? null;
         }
 
         let customer = null;
 
-        if (customerSnap && customerSnap.exists) {
-          const customerData = customerSnap.data();
+        if (
+          customerSnap &&
+          customerSnap.exists
+        ) {
+          const customerData =
+            customerSnap.data() as CustomerData;
 
           customer = {
             id: customerSnap.id,
-            name: customerData?.fullname ?? null,
-            phone: customerData?.phone ?? null,
-            profile_image: customerData?.profile_image ?? null,
+
+            name:
+              customerData?.fullname ??
+              null,
+
+            phone:
+              customerData?.phone ??
+              null,
+
+            profile_image:
+              customerData?.profile_image ??
+              null,
           };
         }
 
-        let distanceKm = 0;
+        let distanceKm:
+          number | null = null;
 
-        if (hasRiderLocation && addressLat !== null && addressLng !== null) {
-          const distance = DistanceService.haversineKm(
-            riderLat,
-            riderLng,
-            addressLat,
-            addressLng
-          );
+        if (
+          hasRiderLocation &&
+          addressLat !== null &&
+          addressLng !== null
+        ) {
+          const distance =
+            DistanceService.haversineKm(
+              riderLat,
+              riderLng,
+              Number(addressLat),
+              Number(addressLng)
+            );
 
-          distanceKm = Number(distance.toFixed(1));
+          if (Number.isFinite(distance)) {
+            distanceKm =
+              Number(
+                distance.toFixed(1)
+              );
+          }
         }
 
-        let orderDatetime = null;
+        let orderDatetime:
+          string | null = null;
 
         if (orderData.order_datetime) {
-          orderDatetime = {
-            _seconds: orderData.order_datetime.seconds,
-          };
+          orderDatetime =
+            orderData.order_datetime
+              .toDate()
+              .toISOString();
         }
 
         return {
-          id: orderDoc.id,
-          order_number: orderData.order_number ?? null,
-          status: orderData.status ?? null,
-          service_type: orderData.service_type ?? null,
-          distance_km: distanceKm,
-          time_slot: orderData.time_slot ?? null,
-          note: orderData.note ?? null,
-          before_wash_image: orderData.before_wash_image ?? null,
-          after_wash_image: orderData.after_wash_image ?? null,
-          rider_pickup_id: orderData.rider_pickup_id
-            ? orderData.rider_pickup_id.id
-            : null,
-          rider_delivery_id: orderData.rider_delivery_id
-            ? orderData.rider_delivery_id.id
-            : null,
-          address_lat: addressLat,
-          address_lng: addressLng,
-          order_datetime: orderDatetime,
-          address: addressText,
-          customer: customer,
+          id:
+            orderDoc.id,
+
+          order_number:
+            orderData.order_id ??
+            null,
+
+          status:
+            orderData.status ??
+            null,
+
+          service_type:
+            orderData.service_type ??
+            null,
+
+          distance_km:
+            distanceKm,
+
+          note:
+            orderData.note ??
+            null,
+
+          before_wash_image:
+            orderData.before_wash_image ??
+            null,
+
+          after_wash_image:
+            orderData.after_wash_image ??
+            null,
+
+          rider_pickup_id:
+            orderData
+              .rider_pickup_id
+              ?.id ??
+            null,
+
+          rider_delivery_id:
+            orderData
+              .rider_delivery_id
+              ?.id ??
+            null,
+
+          address_lat:
+            addressLat,
+
+          address_lng:
+            addressLng,
+
+          order_datetime:
+            orderDatetime,
+
+          address:
+            addressText,
+
+          customer:
+            customer,
         };
       })
     );
 
-    return res.json({
+    return res.status(200).json({
       ok: true,
       data: orders,
     });
+
   } catch (error) {
-    console.error("get rider orders error:", error);
+    console.error(
+      "get rider orders error:",
+      error
+    );
+
     return res.status(500).json({
       ok: false,
       message: "server error",
@@ -355,9 +698,20 @@ router.get("/:id", async (req, res) => {
 });
 router.get("/detail/:id", async (req, res) => {
   try {
-    const order_id = req.params.id as string;
+    const order_id = String(req.params.id || "").trim();
 
-    const orderSnap = await db.collection("orders").doc(order_id).get();
+    if (!order_id) {
+      return res.status(400).json({
+        ok: false,
+        message: "กรุณาระบุ order_id",
+      });
+    }
+
+    const orderRef = db
+      .collection("orders")
+      .doc(order_id);
+
+    const orderSnap = await orderRef.get();
 
     if (!orderSnap.exists) {
       return res.status(404).json({
@@ -368,11 +722,20 @@ router.get("/detail/:id", async (req, res) => {
 
     const orderData = orderSnap.data() as Order;
 
-    const customerRef = orderData.customer_id ?? null;
-    const addressRef = orderData.address_id ?? null;
-    const staffRef = orderData.staff_id ?? null;
-    const riderPickupRef = orderData.rider_pickup_id ?? null;
-    const riderDeliveryRef = orderData.rider_delivery_id ?? null;
+    const customerRef =
+      orderData.customer_id ?? null;
+
+    const addressRef =
+      orderData.address_id ?? null;
+
+    const staffRef =
+      orderData.staff_id ?? null;
+
+    const riderPickupRef =
+      orderData.rider_pickup_id ?? null;
+
+    const riderDeliveryRef =
+      orderData.rider_delivery_id ?? null;
 
     const [
       customerSnap,
@@ -381,100 +744,221 @@ router.get("/detail/:id", async (req, res) => {
       riderPickupSnap,
       riderDeliverySnap,
     ] = await Promise.all([
-      customerRef ? customerRef.get() : Promise.resolve(null),
-      addressRef ? addressRef.get() : Promise.resolve(null),
-      staffRef ? staffRef.get() : Promise.resolve(null),
-      riderPickupRef ? riderPickupRef.get() : Promise.resolve(null),
-      riderDeliveryRef ? riderDeliveryRef.get() : Promise.resolve(null),
+      customerRef
+        ? customerRef.get()
+        : Promise.resolve(null),
+
+      addressRef
+        ? addressRef.get()
+        : Promise.resolve(null),
+
+      staffRef
+        ? staffRef.get()
+        : Promise.resolve(null),
+
+      riderPickupRef
+        ? riderPickupRef.get()
+        : Promise.resolve(null),
+
+      riderDeliveryRef
+        ? riderDeliveryRef.get()
+        : Promise.resolve(null),
     ]);
 
     let customer = null;
-    if (customerSnap && customerSnap.exists) {
-      const customerData = customerSnap.data() as CustomerData;
+
+    if (
+      customerSnap &&
+      customerSnap.exists
+    ) {
+      const customerData =
+        customerSnap.data() as CustomerData;
+
       customer = {
-        customer_id: customerSnap.id,
-        username: customerData.username,
-        fullname: customerData.fullname,
-        profile_image: customerData.profile_image,
-        phone: customerData.phone,
+        customer_id:
+          customerSnap.id,
+
+        username:
+          customerData.username ?? null,
+
+        fullname:
+          customerData.fullname ?? null,
+
+        profile_image:
+          customerData.profile_image ?? null,
+
+        phone:
+          customerData.phone ?? null,
       };
     }
 
     let address = null;
-    if (addressSnap && addressSnap.exists) {
-      const addressData = addressSnap.data() as CustomerAddress;
+
+    if (
+      addressSnap &&
+      addressSnap.exists
+    ) {
+      const addressData =
+        addressSnap.data() as CustomerAddress;
+
       address = {
-        address_text: addressData.address_text,
-        latitude: addressData.latitude,
-        longitude: addressData.longitude,
+        address_text:
+          addressData.address_text ?? null,
+
+        latitude:
+          addressData.latitude ?? null,
+
+        longitude:
+          addressData.longitude ?? null,
       };
     }
 
     let staff = null;
-    if (staffSnap && staffSnap.exists) {
-      const staffData = staffSnap.data() as LaundryStaff;
+
+    if (
+      staffSnap &&
+      staffSnap.exists
+    ) {
+      const staffData =
+        staffSnap.data() as LaundryStaff;
+
       staff = {
-        fullname: staffData.fullname,
-        phone: staffData.phone,
-        profile_image: staffData.profile_image,
+        fullname:
+          staffData.fullname ?? null,
+
+        phone:
+          staffData.phone ?? null,
+
+        profile_image:
+          staffData.profile_image ?? null,
       };
     }
 
     let rider_pickup = null;
-    if (riderPickupSnap && riderPickupSnap.exists) {
-      const riderPickupData = riderPickupSnap.data() as Rider;
+
+    if (
+      riderPickupSnap &&
+      riderPickupSnap.exists
+    ) {
+      const riderPickupData =
+        riderPickupSnap.data() as Rider;
+
       rider_pickup = {
-        fullname: riderPickupData.fullname,
-        phone: riderPickupData.phone,
-        vehicle_type: riderPickupData.vehicle_type,
-        license_plate: riderPickupData.license_plate,
-        profile_image: riderPickupData.profile_image,
+        fullname:
+          riderPickupData.fullname ?? null,
+
+        phone:
+          riderPickupData.phone ?? null,
+
+        vehicle_type:
+          riderPickupData.vehicle_type ?? null,
+
+        license_plate:
+          riderPickupData.license_plate ?? null,
+
+        profile_image:
+          riderPickupData.profile_image ?? null,
       };
     }
 
     let rider_delivery = null;
-    if (riderDeliverySnap && riderDeliverySnap.exists) {
-      const riderDeliveryData = riderDeliverySnap.data() as Rider;
+
+    if (
+      riderDeliverySnap &&
+      riderDeliverySnap.exists
+    ) {
+      const riderDeliveryData =
+        riderDeliverySnap.data() as Rider;
+
       rider_delivery = {
-        fullname: riderDeliveryData.fullname,
-        phone: riderDeliveryData.phone,
-        vehicle_type: riderDeliveryData.vehicle_type,
-        license_plate: riderDeliveryData.license_plate,
-        profile_image: riderDeliveryData.profile_image,
+        fullname:
+          riderDeliveryData.fullname ?? null,
+
+        phone:
+          riderDeliveryData.phone ?? null,
+
+        vehicle_type:
+          riderDeliveryData.vehicle_type ?? null,
+
+        license_plate:
+          riderDeliveryData.license_plate ?? null,
+
+        profile_image:
+          riderDeliveryData.profile_image ?? null,
       };
     }
 
-    return res.json({
+    let orderDatetime:
+      string | null = null;
+
+    if (orderData.order_datetime) {
+      orderDatetime =
+        orderData.order_datetime
+          .toDate()
+          .toISOString();
+    }
+
+    return res.status(200).json({
       ok: true,
       data: {
-        order_id: orderSnap.id,
-        customer_id: orderData.customer_id?.id ?? null,
-        address_id: orderData.address_id?.id ?? null,
-        store_id: orderData.store_id?.id ?? null,
-        rider_pickup_id: orderData.rider_pickup_id?.id ?? null,
-        rider_delivery_id: orderData.rider_delivery_id?.id ?? null,
-        machine_washer_id: orderData.machine_washer_id?.id ?? null,
-        machine_dryer_id: orderData.machine_dryer_id?.id ?? null,
-        staff_id: orderData.staff_id?.id ?? null,
-        service_type: orderData.service_type,
-        wash_dry_weight: orderData.wash_dry_weight,
-        service_price: orderData.service_price,
-        delivery_price: orderData.delivery_price,
-        detergent_option: orderData.detergent_option,
-        before_wash_image: orderData.before_wash_image,
-        after_wash_image: orderData.after_wash_image,
-        note: orderData.note,
-        status: orderData.status,
-        order_datetime: orderData.order_datetime,
-        customer: customer,
-        address: address,
-        staff: staff,
-        rider_pickup: rider_pickup,
-        rider_delivery: rider_delivery,
+        order_id:
+          orderSnap.id,
+        customer_id:
+          orderData.customer_id?.id ?? null,
+        address_id:
+          orderData.address_id?.id ?? null,
+        store_id:
+          orderData.store_id?.id ?? null,
+        rider_pickup_id:
+          orderData.rider_pickup_id?.id ?? null,
+        rider_delivery_id:
+          orderData.rider_delivery_id?.id ?? null,
+        machine_washer_id:
+          orderData.machine_washer_id?.id ?? null,
+        machine_dryer_id:
+          orderData.machine_dryer_id?.id ?? null,
+        staff_id:
+          orderData.staff_id?.id ?? null,
+        service_type:
+          orderData.service_type ?? null,
+        wash_dry_weight:
+          orderData.wash_dry_weight ?? null,
+        service_price:
+          orderData.service_price ?? null,
+        delivery_price:
+          orderData.delivery_price ?? null,
+        detergent_price:
+          orderData.detergent_price ?? null,
+        detergent_option:
+          orderData.detergent_option ?? null,
+        before_wash_image:
+          orderData.before_wash_image ?? null,
+        after_wash_image:
+          orderData.after_wash_image ?? null,
+        note:
+          orderData.note ?? null,
+        status:
+          orderData.status ?? null,
+        order_datetime:
+          orderDatetime,
+        customer:
+          customer,
+        address:
+          address,
+        staff:
+          staff,
+        rider_pickup:
+          rider_pickup,
+        rider_delivery:
+          rider_delivery,
       },
     });
   } catch (error) {
-    console.error("get order detail error:", error);
+    console.error(
+      "get order detail error:",
+      error
+    );
+
     return res.status(500).json({
       ok: false,
       message: "เกิดข้อผิดพลาดในระบบ",
@@ -483,108 +967,248 @@ router.get("/detail/:id", async (req, res) => {
 });
 router.post("/accept/:id", async (req, res) => {
   try {
-    const order_id = req.params.id;
-    const { rider_id } = req.body;
+    const order_id = String(req.params.id || "").trim();
+    const rider_id = String(req.body.rider_id || "").trim();
 
-    if (!rider_id) {
-      return res.status(400).json({ ok: false, message: "กรุณาระบุ rider_id" });
-    }
-
-    const riderRef = db.collection("riders").doc(rider_id);
-    const max_order = 3;
-
-    const [pickupSnap, deliverySnap] = await Promise.all([
-      db.collection("orders")
-        .where("rider_pickup_id", "==", riderRef)
-        .where("status", "==", "pickup_in_progress")
-        .get(),
-      db.collection("orders")
-        .where("rider_delivery_id", "==", riderRef)
-        .where("status", "==", "delivery_heading_to_shop")
-        .get(),
-    ]);
-
-    const totalActive = pickupSnap.size + deliverySnap.size;
-    if (totalActive >= max_order) {
+    if (!order_id) {
       return res.status(400).json({
         ok: false,
-        message: `คุณรับงานครบ ${max_order} งานแล้ว กรุณาจบงานก่อนรับงานใหม่`,
+        message: "กรุณาระบุ order_id",
       });
     }
 
+    if (!rider_id) {
+      return res.status(400).json({
+        ok: false,
+        message: "กรุณาระบุ rider_id",
+      });
+    }
+
+    const riderRef = db.collection("riders").doc(rider_id);
     const orderRef = db.collection("orders").doc(order_id);
+    const max_order = 3;
+
+    const activeStatuses = [
+      "pickup_in_progress",
+      "pickup_completed",
+      "arrived_at_shop",
+      "store_pickup_in_progress",
+      "delivery_heading_to_shop",
+      "delivery_pickup_completed",
+      "delivery_in_progress",
+    ];
+
+    const [
+      riderSnap,
+      pickupSnap,
+      deliverySnap,
+    ] = await Promise.all([
+      riderRef.get(),
+
+      db.collection("orders")
+        .where("rider_pickup_id", "==", riderRef)
+        .where("status", "in", activeStatuses)
+        .get(),
+
+      db
+        .collection("orders")
+        .where("rider_delivery_id", "==", riderRef)
+        .where("status", "in", activeStatuses)
+        .get(),
+    ]);
+
+    if (!riderSnap.exists) {
+      return res.status(404).json({
+        ok: false,
+        message: "ไม่พบไรเดอร์",
+      });
+    }
+
+    const activeOrderIds = new Set<string>();
+
+    for (const doc of pickupSnap.docs) {
+      activeOrderIds.add(doc.id);
+    }
+
+    for (const doc of deliverySnap.docs) {
+      activeOrderIds.add(doc.id);
+    }
+
+    const totalActive =
+      activeOrderIds.size;
+
+    if (totalActive >= max_order) {
+      return res.status(400).json({
+        ok: false,
+        message:
+          `คุณรับงานครบ ${max_order} งานแล้ว กรุณาจบงานก่อนรับงานใหม่`,
+      });
+    }
+
+    let newStatus = "";
+    let customerId: string | null = null;
+
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(orderRef);
-      if (!snap.exists) throw new Error("ไม่พบออเดอร์นี้");
 
-      const status = snap.data()?.status as string;
+      if (!snap.exists) {
+        throw new Error(
+          "ORDER_NOT_FOUND"
+        );
+      }
+
+      const orderData =
+        snap.data() as Order;
+
+      const status =
+        orderData.status;
 
       if (status === "waiting_pickup") {
-        if (snap.data()?.rider_pickup_id) throw new Error("งานนี้ถูกรับไปแล้ว");
-        tx.update(orderRef, {
-          rider_pickup_id: riderRef,
-          status: "pickup_in_progress",
+        if (orderData.rider_pickup_id) {
+          throw new Error(
+            "ORDER_ALREADY_ACCEPTED"
+          );
+        }
 
-          order_datetime: FieldValue.serverTimestamp(),
-        });
-      }
-      else if (status === "waiting_delivery") {
-        if (snap.data()?.rider_delivery_id) throw new Error("งานนี้ถูกรับไปแล้ว");
+        newStatus =
+          "pickup_in_progress";
+
         tx.update(orderRef, {
-          rider_delivery_id: riderRef,
-          status: "delivery_heading_to_shop",
-          order_datetime: FieldValue.serverTimestamp(),
+          rider_pickup_id:
+            riderRef,
+
+          status:
+            newStatus,
+
+          order_datetime:
+            FieldValue.serverTimestamp(),
         });
+      } else if (
+        status === "waiting_delivery"
+      ) {
+        if (orderData.rider_delivery_id) {
+          throw new Error(
+            "ORDER_ALREADY_ACCEPTED"
+          );
+        }
+
+        newStatus =
+          "delivery_heading_to_shop";
+
+        tx.update(orderRef, {
+          rider_delivery_id:
+            riderRef,
+
+          status:
+            newStatus,
+
+          order_datetime:
+            FieldValue.serverTimestamp(),
+        });
+      } else {
+        throw new Error(
+          "INVALID_ORDER_STATUS"
+        );
       }
-      else {
-        throw new Error("สถานะงานไม่รองรับการรับงาน");
-      }
+
+      customerId =
+        orderData.customer_id?.id ??
+        null;
     });
-    const orderSnap = await orderRef.get();
 
-    const orderData = orderSnap.data();
-    if (orderData?.customer_id && orderData?.status == "pickup_in_progress") {
-      if (orderData?.customer_id) {
-        await NotificationService.sendToUser(
-          orderData.customer_id.id,
-          "customer",
-          "ไรเดอร์รับงานแล้ว",
-          "ไรเดอร์กำลังไปรับผ้าของคุณ",
-          {
-            order_id: order_id,
-            status: orderData.status
-          }
+    if (customerId) {
+      try {
+        if (
+          newStatus ===
+          "pickup_in_progress"
+        ) {
+          await NotificationService
+            .sendToUser(
+              customerId,
+              "customer",
+              "ไรเดอร์รับงานแล้ว",
+              "ไรเดอร์กำลังไปรับผ้าของคุณ",
+              {
+                order_id,
+                status: newStatus,
+              }
+            );
+        } else if (
+          newStatus ===
+          "delivery_heading_to_shop"
+        ) {
+          await NotificationService
+            .sendToUser(
+              customerId,
+              "customer",
+              "ไรเดอร์รับงานแล้ว",
+              "ไรเดอร์กำลังไปรับผ้าของคุณที่ร้าน",
+              {
+                order_id,
+                status: newStatus,
+              }
+            );
+        }
+      } catch (error) {
+        console.error(
+          "send notification error:",
+          error
         );
-
       }
     }
-    else if (orderData?.customer_id && orderData?.status == "delivery_heading_to_shop") {
-      if (orderData?.customer_id) {
-        await NotificationService.sendToUser(
-          orderData.customer_id.id,
-          "customer",
-          "ไรเดอร์รับงานแล้ว",
-          "ไรเดอร์กำลังไปรับผ้าของคุณ",
-          {
-            order_id: order_id,
-            status: orderData.status
-          }
-        );
-      }
-    }
 
-
-
-    return res.json({
+    return res.status(200).json({
       ok: true,
-      message: `รับงานสำเร็จ! (งานที่ ${totalActive + 1}/${max_order})`,
+      message:
+        `รับงานสำเร็จ! (งานที่ ${totalActive + 1}/${max_order})`,
+      data: {
+        order_id,
+        rider_id,
+        status:
+          newStatus,
+      },
     });
-
   } catch (error: any) {
-    if (error.message) {
-      return res.status(400).json({ ok: false, message: error.message });
+    console.error(
+      "accept rider order error:",
+      error
+    );
+
+    if (
+      error?.message ===
+      "ORDER_NOT_FOUND"
+    ) {
+      return res.status(404).json({
+        ok: false,
+        message: "ไม่พบออเดอร์นี้",
+      });
     }
-    console.error(error);
-    return res.status(500).json({ ok: false, message: "server error" });
+
+    if (
+      error?.message ===
+      "ORDER_ALREADY_ACCEPTED"
+    ) {
+      return res.status(409).json({
+        ok: false,
+        message:
+          "งานนี้ถูกรับไปแล้ว",
+      });
+    }
+
+    if (
+      error?.message ===
+      "INVALID_ORDER_STATUS"
+    ) {
+      return res.status(400).json({
+        ok: false,
+        message:
+          "สถานะงานไม่รองรับการรับงาน",
+      });
+    }
+
+    return res.status(500).json({
+      ok: false,
+      message: "server error",
+    });
   }
 });

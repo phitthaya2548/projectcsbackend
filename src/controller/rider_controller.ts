@@ -410,7 +410,6 @@ router.put("/profile/status/:id", async (req, res) => {
 
     await riderRef.update({
       status: status,
-      updated_at: new Date(),
     });
 
     return res.json({
@@ -431,57 +430,7 @@ router.put("/profile/status/:id", async (req, res) => {
     });
   }
 });
-router.get("/store/:id", async (req, res) => {
-  try {
-    const store_id = req.params.id;
-    
-    const storeRef = db.collection("stores").doc(store_id);
 
-
-    const snap = await db
-      .collection("riders")
-      .where("store_id", "==", storeRef)
-      .get();
-
-    if (snap.empty) {
-      return res.json({
-        ok: true,
-        count: 0,
-        data: [],
-      });
-    }
-
-    const riders = snap.docs.map(doc => {
-      const d = doc.data();
-
-      return {
-        rider_id: doc.id,
-        email: d.email,
-        username: d.username,
-        fullname: d.fullname,
-        phone: d.phone,
-        vehicle_type: d.vehicle_type,
-        license_plate: d.license_plate,
-        profile_image: d.profile_image ?? null,
-        status: d.status,
-        latitude: d.latitude ?? null,
-        longitude: d.longitude ?? null,
-      };
-    });
-
-    return res.json({
-      ok: true,
-      count: riders.length,
-      data: riders,
-    });
-
-  } catch (e: any) {
-    return res.status(500).json({
-      ok: false,
-      message: e.message,
-    });
-  }
-});
 router.delete("/delete/:id", async (req, res) => {
   try {
     const rider_id = req.params.id as string;

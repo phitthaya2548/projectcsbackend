@@ -81,7 +81,7 @@ exports.router.post("/register", upload_1.upload.single("profile_image"), async 
             vehicle_type,
             license_plate,
             profile_image: imageUrl,
-            status: "ใช้งาน",
+            status: "TEMP_CLOSED",
             latitude: null,
             longitude: null,
         };
@@ -261,6 +261,34 @@ exports.router.get("/:id", async (req, res) => {
         });
     }
 });
+exports.router.get("/profile/status/:id", async (req, res) => {
+    try {
+        const riderId = req.params.id;
+        const riderRef = firebase_1.db.collection("riders").doc(riderId);
+        const snap = await riderRef.get();
+        if (!snap.exists) {
+            return res.status(404).json({
+                ok: false,
+                message: "ไม่พบ rider",
+            });
+        }
+        const data = snap.data();
+        return res.json({
+            ok: true,
+            data: {
+                rider_id: riderId,
+                status: data?.status ?? "TEMP_CLOSED",
+            },
+        });
+    }
+    catch (e) {
+        console.error("get rider status error:", e);
+        return res.status(500).json({
+            ok: false,
+            message: e.message ?? "Server error",
+        });
+    }
+});
 exports.router.put("/profile/status/:id", async (req, res) => {
     try {
         const riderId = req.params.id;
@@ -271,7 +299,7 @@ exports.router.put("/profile/status/:id", async (req, res) => {
                 message: "กรุณาระบุสถานะ rider",
             });
         }
-        const allowedStatus = ["ใช้งาน", "ปิดชั่วคราว"];
+        const allowedStatus = ["ONLINE", "TEMP_CLOSED"];
         if (!allowedStatus.includes(status)) {
             return res.status(400).json({
                 ok: false,
@@ -288,7 +316,6 @@ exports.router.put("/profile/status/:id", async (req, res) => {
         }
         await riderRef.update({
             status: status,
-            updated_at: new Date(),
         });
         return res.json({
             ok: true,
@@ -304,50 +331,6 @@ exports.router.put("/profile/status/:id", async (req, res) => {
         return res.status(500).json({
             ok: false,
             message: e.message ?? "Server error",
-        });
-    }
-});
-exports.router.get("/store/:id", async (req, res) => {
-    try {
-        const store_id = req.params.id;
-        const storeRef = firebase_1.db.collection("stores").doc(store_id);
-        const snap = await firebase_1.db
-            .collection("riders")
-            .where("store_id", "==", storeRef)
-            .get();
-        if (snap.empty) {
-            return res.json({
-                ok: true,
-                count: 0,
-                data: [],
-            });
-        }
-        const riders = snap.docs.map(doc => {
-            const d = doc.data();
-            return {
-                rider_id: doc.id,
-                email: d.email,
-                username: d.username,
-                fullname: d.fullname,
-                phone: d.phone,
-                vehicle_type: d.vehicle_type,
-                license_plate: d.license_plate,
-                profile_image: d.profile_image ?? null,
-                status: d.status,
-                latitude: d.latitude ?? null,
-                longitude: d.longitude ?? null,
-            };
-        });
-        return res.json({
-            ok: true,
-            count: riders.length,
-            data: riders,
-        });
-    }
-    catch (e) {
-        return res.status(500).json({
-            ok: false,
-            message: e.message,
         });
     }
 });

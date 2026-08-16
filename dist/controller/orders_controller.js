@@ -1,10 +1,20 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.router = void 0;
 const express_1 = require("express");
 const firebase_1 = require("../config/firebase");
 const firestore_1 = require("firebase-admin/firestore");
 const haversine_1 = require("../services/haversine");
+const notification_1 = require("../services/notification");
+const dayjs_1 = __importDefault(require("dayjs"));
+const utc_1 = __importDefault(require("dayjs/plugin/utc"));
+const timezone_1 = __importDefault(require("dayjs/plugin/timezone"));
+dayjs_1.default.extend(utc_1.default);
+dayjs_1.default.extend(timezone_1.default);
+const TZ = "Asia/Bangkok";
 exports.router = (0, express_1.Router)();
 exports.router.post("/create", async (req, res) => {
     try {
@@ -25,7 +35,7 @@ exports.router.post("/create", async (req, res) => {
             return res.status(404).json({ ok: false, message: "ไม่พบข้อมูลลูกค้า" });
         }
         const store = storeSnap.data();
-        if (store.status !== "เปิดร้าน") {
+        if (store.status !== "OPEN") {
             return res.status(400).json({ ok: false, message: "ร้านปิดอยู่ ไม่สามารถสั่งได้" });
         }
         const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Bangkok" }));
@@ -89,6 +99,7 @@ exports.router.post("/create", async (req, res) => {
             detergent_option: detergent_option ?? null,
             before_wash_image: before_wash_image ?? "",
             after_wash_image: "",
+            detergent_price: 0,
             note: note ?? null,
             machine_washer_id: null,
             machine_dryer_id: null,
@@ -107,6 +118,75 @@ exports.router.post("/create", async (req, res) => {
         return res.status(500).json({ ok: false, message: "Server error" });
     }
 });
+exports.router.put("/cancel/:id", async (req, res) => {
+    try {
+        const orderId = req.params.id;
+        const { customerId } = req.body;
+        if (!customerId) {
+            return res.status(400).json({
+                ok: false,
+                message: "ไม่พบลูกค้า",
+            });
+        }
+        const orderRef = firebase_1.db.collection("orders").doc(orderId);
+        const orderSnap = await orderRef.get();
+        if (!orderSnap.exists) {
+            return res.status(404).json({
+                ok: false,
+                message: "ไม่พบออเดอร์",
+            });
+        }
+        const orderData = orderSnap.data();
+        // ตรวจสอบว่าเป็นออเดอร์ของลูกค้าคนนี้หรือไม่
+        if (orderData.customer_id?.id !== customerId) {
+            return res.status(403).json({
+                ok: false,
+                message: "ออเดอร์นี้ไม่ใช่ของคุณ",
+            });
+        }
+        // ต้องเป็นสถานะ pending_confirmation เท่านั้น
+        if (orderData.status !== "pending_confirmation") {
+            return res.status(400).json({
+                ok: false,
+                message: "ไม่สามารถยกเลิกออเดอร์ในสถานะนี้ได้",
+            });
+        }
+        // ตรวจสอบ order_datetime
+        if (!orderData.order_datetime) {
+            return res.status(400).json({
+                ok: false,
+                message: "ไม่พบเวลาของออเดอร์",
+            });
+        }
+        const orderTime = orderData.order_datetime.toMillis();
+        const currentTime = firestore_1.Timestamp.now().toMillis();
+        const diffMs = currentTime - orderTime;
+        const fiveMinutes = 5 * 60 * 1000;
+        if (diffMs < fiveMinutes) {
+            const remainingMinutes = Math.ceil((fiveMinutes - diffMs) / (60 * 1000));
+            return res.status(400).json({
+                ok: false,
+                message: `ยังไม่สามารถยกเลิกได้ กรุณารออีกประมาณ ${remainingMinutes} นาที`,
+            });
+        }
+        // ผ่าน 5 นาทีแล้ว -> ยกเลิกได้
+        await orderRef.update({
+            status: "cancelled",
+            cancelled_at: firestore_1.Timestamp.now(),
+        });
+        return res.status(200).json({
+            ok: true,
+            message: "ยกเลิกออเดอร์สำเร็จ",
+        });
+    }
+    catch (error) {
+        console.error("Cancel order error:", error);
+        return res.status(500).json({
+            ok: false,
+            message: "เกิดข้อผิดพลาดในการยกเลิกออเดอร์",
+        });
+    }
+});
 exports.router.post("/store/accept/:id", async (req, res) => {
     const orderId = req.params.id;
     const { store_id } = req.body;
@@ -116,22 +196,27 @@ exports.router.post("/store/accept/:id", async (req, res) => {
         if (!orderSnap.exists) {
             return res.status(404).json({ ok: false, message: "ไม่พบออเดอร์" });
         }
-        const data = orderSnap.data();
-        // ตรวจสอบว่าออเดอร์นี้เป็นของร้านที่กดรับจริง
-        if (store_id && data.store_id?.id !== store_id) {
+        const Storedata = orderSnap.data();
+        if (store_id && Storedata.store_id?.id !== store_id) {
             return res.status(403).json({ ok: false, message: "ออเดอร์นี้ไม่ใช่ของร้านค้านี้" });
         }
-        // อนุญาตให้กด "รับ" ได้เฉพาะออเดอร์ที่ยังรอยืนยันอยู่เท่านั้น
-        if (data.status !== "pending_confirmation") {
+        if (Storedata.status !== "pending_confirmation") {
             return res.status(400).json({
                 ok: false,
-                message: `ไม่สามารถรับออเดอร์นี้ได้ (สถานะปัจจุบัน: ${data.status})`,
+                message: `ไม่สามารถรับออเดอร์นี้ได้ (สถานะปัจจุบัน: ${Storedata.status})`,
             });
         }
-        await orderRef.update({
+        const updteData = {
             status: "waiting_pickup",
-            order_datetime: firestore_1.FieldValue.serverTimestamp(),
-        });
+            order_datetime: firestore_1.Timestamp.now(),
+        };
+        await orderRef.update(updteData);
+        if (Storedata?.customer_id) {
+            await notification_1.NotificationService.sendToUser(Storedata.customer_id.id, "customer", "ร้านยืนยันออเดอร์แล้ว", "ร้านยืนยันออเดอร์ของคุณแล้ว กำลังรอไรเดอร์มารับผ้า", {
+                order_id: orderId,
+                status: "waiting_pickup"
+            });
+        }
         return res.status(200).json({
             ok: true,
             message: "รับออเดอร์สำเร็จ เปลี่ยนสถานะเป็นรอจัดส่ง",
@@ -141,6 +226,36 @@ exports.router.post("/store/accept/:id", async (req, res) => {
     }
     catch (error) {
         console.error("Error accepting order:", error);
+        return res.status(500).json({ ok: false, message: "Server error" });
+    }
+});
+exports.router.post("/store/cancel/:id", async (req, res) => {
+    const orderId = req.params.id;
+    const { store_id, reason } = req.body;
+    try {
+        const orderRef = firebase_1.db.collection("orders").doc(orderId);
+        const orderSnap = await orderRef.get();
+        if (!orderSnap.exists) {
+            return res.status(404).json({ ok: false, message: "ไม่พบออเดอร์" });
+        }
+        const data = orderSnap.data();
+        if (store_id && data.store_id?.id !== store_id) {
+            return res.status(403).json({ ok: false, message: "ออเดอร์นี้ไม่ใช่ของร้านค้านี้" });
+        }
+        await orderRef.update({
+            status: "cancelled",
+            cancel_reason: reason ?? null,
+            cancelled_at: firestore_1.FieldValue.serverTimestamp(),
+        });
+        return res.status(200).json({
+            ok: true,
+            message: "ยกเลิกออเดอร์สำเร็จ",
+            order_id: orderId,
+            status: "cancelled",
+        });
+    }
+    catch (error) {
+        console.error("Error cancelling order:", error);
         return res.status(500).json({ ok: false, message: "Server error" });
     }
 });
@@ -163,21 +278,13 @@ exports.router.get("/store/detail/:id", async (req, res) => {
             status: data.status,
             service_type: data.service_type,
             detergent_option: data.detergent_option,
-            wash_dry_weight: data.wash_dry_weight ?? 0,
             service_price: data.service_price ?? 0,
-            delivery_price: data.delivery_price ?? 0,
-            total_amount: (data.service_price ?? 0) + (data.delivery_price ?? 0),
             note: data.note,
-            before_wash_image: data.before_wash_image ?? "",
-            after_wash_image: data.after_wash_image ?? "",
             order_datetime: data.order_datetime
                 ? { _seconds: data.order_datetime.seconds }
                 : null,
             store_id: data.store_id?.id ?? null,
             address_id: data.address_id?.id ?? null,
-            machine_washer_id: data.machine_washer_id?.id ?? null,
-            machine_dryer_id: data.machine_dryer_id?.id ?? null,
-            // ข้อมูลเสริม denormalized
             customer_fullname: customer?.fullname ?? "-",
             customer_phone: customer?.phone ?? "-",
             customer_profile_image: customer?.profile_image ?? "",
@@ -191,88 +298,114 @@ exports.router.get("/store/detail/:id", async (req, res) => {
         return res.status(500).json({ ok: false, message: "Server error" });
     }
 });
-exports.router.get("/list/:id", async (req, res) => {
+exports.router.get("/customer/list/:id", async (req, res) => {
     try {
         const customerId = req.params.id;
-        const customerRef = firebase_1.db.collection("customers").doc(customerId);
+        const customerRef = firebase_1.db
+            .collection("customers")
+            .doc(customerId);
         const customerSnap = await customerRef.get();
         if (!customerSnap.exists) {
-            return res.status(404).json({ ok: false, message: "ไม่พบลูกค้า" });
+            return res.status(404).json({
+                ok: false,
+                message: "ไม่พบลูกค้า",
+            });
         }
         const customerData = customerSnap.data();
-        const snap = await firebase_1.db
+        const orderSnap = await firebase_1.db
             .collection("orders")
             .where("customer_id", "==", customerRef)
             .orderBy("order_datetime", "desc")
             .get();
-        if (snap.empty) {
-            return res.json({ ok: true, data: [] });
-        }
-        const addressIds = [
-            ...new Set(snap.docs
-                .map((d) => d.data().address_id?.id)
-                .filter(Boolean)),
-        ];
-        const addressMap = new Map();
-        if (addressIds.length > 0) {
-            const addressSnaps = await Promise.all(addressIds.map((id) => firebase_1.db.collection("customer_addresses").doc(id).get()));
-            addressSnaps.forEach((snap) => {
-                if (snap.exists)
-                    addressMap.set(snap.id, snap.data());
+        if (orderSnap.empty) {
+            return res.status(200).json({
+                ok: true,
+                data: [],
             });
         }
-        const reviewRefs = snap.docs.map((d) => firebase_1.db.collection("reviews").doc(d.id));
+        const addressIds = [
+            ...new Set(orderSnap.docs
+                .map((doc) => {
+                const data = doc.data();
+                return data.address_id?.id;
+            })
+                .filter((id) => Boolean(id))),
+        ];
+        const addressRefs = addressIds.map((id) => firebase_1.db.collection("customer_addresses").doc(id));
+        const addressSnaps = addressRefs.length > 0
+            ? await firebase_1.db.getAll(...addressRefs)
+            : [];
+        const addressMap = new Map();
+        addressSnaps.forEach((addressSnap) => {
+            if (addressSnap.exists) {
+                addressMap.set(addressSnap.id, addressSnap.data());
+            }
+        });
+        const reviewRefs = orderSnap.docs.map((doc) => firebase_1.db.collection("reviews").doc(doc.id));
         const reviewSnaps = reviewRefs.length > 0
-            ? await firebase_1.db.getAll.apply(firebase_1.db, reviewRefs)
+            ? await firebase_1.db.getAll(...reviewRefs)
             : [];
         const reviewMap = new Map();
-        reviewSnaps.forEach((r) => {
-            if (r.exists)
-                reviewMap.set(r.id, r.data());
+        reviewSnaps.forEach((reviewSnap) => {
+            if (reviewSnap.exists) {
+                reviewMap.set(reviewSnap.id, reviewSnap.data());
+            }
         });
-        const data = snap.docs.map((doc) => {
-            const d = doc.data();
-            const addressId = d.address_id?.id ?? null;
-            const addressData = addressId ? addressMap.get(addressId) ?? null : null;
+        const data = orderSnap.docs.map((doc) => {
+            const order = doc.data();
+            const addressId = order.address_id?.id ?? null;
+            const addressData = addressId
+                ? addressMap.get(addressId) ?? null
+                : null;
             const reviewData = reviewMap.get(doc.id) ?? null;
             return {
                 order_id: doc.id,
-                customer_id: d.customer_id?.id ?? null,
-                store_id: d.store_id?.id ?? null,
+                customer_id: order.customer_id?.id ?? null,
+                store_id: order.store_id?.id ?? null,
                 address_id: addressId,
-                rider_pickup_id: d.rider_pickup_id?.id ?? null,
-                rider_delivery_id: d.rider_delivery_id?.id ?? null,
-                staff_id: d.staff_id?.id ?? null,
-                service_type: d.service_type,
-                wash_dry_weight: d.wash_dry_weight ?? 0,
-                service_price: d.service_price ?? 0,
-                delivery_price: d.delivery_price ?? 0,
-                total_amount: (d.service_price ?? 0) + (d.delivery_price ?? 0),
-                detergent_option: d.detergent_option ?? null,
-                before_wash_image: d.before_wash_image ?? "",
-                after_wash_image: d.after_wash_image ?? "",
-                note: d.note ?? null,
-                machine_washer_id: d.machine_washer_id?.id ?? null,
-                machine_dryer_id: d.machine_dryer_id?.id ?? null,
-                status: d.status ?? "waiting_pickup",
-                order_datetime: d.order_datetime
-                    ? { _seconds: d.order_datetime.seconds }
+                rider_pickup_id: order.rider_pickup_id?.id ?? null,
+                rider_delivery_id: order.rider_delivery_id?.id ?? null,
+                staff_id: order.staff_id?.id ?? null,
+                machine_washer_id: order.machine_washer_id?.id ?? null,
+                machine_dryer_id: order.machine_dryer_id?.id ?? null,
+                service_type: order.service_type,
+                wash_dry_eight: order.wash_dry_weight ?? 0,
+                service_price: order.service_price ?? 0,
+                delivery_price: order.delivery_price ?? 0,
+                detergent_price: order.detergent_price ?? 0,
+                total_amount: (order.service_price ?? 0) +
+                    (order.delivery_price ?? 0) +
+                    (order.detergent_price ?? 0),
+                detergent_option: order.detergent_option ?? null,
+                before_wash_image: order.before_wash_image ?? "",
+                after_wash_image: order.after_wash_image ?? "",
+                note: order.note ?? null,
+                status: order.status,
+                order_datetime: order.order_datetime
+                    ? {
+                        _seconds: order.order_datetime.seconds,
+                    }
                     : null,
                 customer_fullname: customerData.fullname ?? "-",
                 customer_phone: customerData.phone ?? "-",
                 address_full: addressData?.address_text ?? "-",
-                // สถานะรีวิว
                 is_reviewed: reviewData !== null,
             };
         });
-        return res.json({ ok: true, data });
+        return res.status(200).json({
+            ok: true,
+            data,
+        });
     }
     catch (error) {
-        console.error(error);
-        return res.status(500).json({ ok: false, message: "Server error" });
+        console.error("Error fetching customer order list:", error);
+        return res.status(500).json({
+            ok: false,
+            message: "Server error",
+        });
     }
 });
-exports.router.get("/completed/:id", async (req, res) => {
+exports.router.get("/customer/completed/:id", async (req, res) => {
     const orderId = req.params.id;
     try {
         const orderSnap = await firebase_1.db.collection("orders").doc(orderId).get();
@@ -295,6 +428,8 @@ exports.router.get("/completed/:id", async (req, res) => {
         const riderDelivery = riderDeliverySnap?.data();
         const staff = staffSnap?.data();
         const review = reviewSnap.exists ? reviewSnap.data() : null;
+        const storeData = storeSnap?.data();
+        const addressData = addressSnap?.data();
         const order = {
             order_id: data.order_id,
             status: data.status,
@@ -302,16 +437,19 @@ exports.router.get("/completed/:id", async (req, res) => {
             detergent_option: data.detergent_option,
             service_price: data.service_price ?? 0,
             delivery_price: data.delivery_price ?? 0,
-            total_amount: (data.service_price ?? 0) + (data.delivery_price ?? 0),
+            total_amount: (data.service_price ?? 0) + (data.delivery_price ?? 0) + (data?.detergent_price ?? 0),
             wash_dry_weight: data.wash_dry_weight,
             note: data.note,
             before_wash_image: data.before_wash_image,
             after_wash_image: data.after_wash_image,
             order_datetime: data.order_datetime,
             store_id: data.store_id?.id ?? null,
+            store_name: storeData?.store_name ?? null,
             address_id: data.address_id?.id ?? null,
+            address_text: addressData?.address ?? null,
             machine_washer_id: data.machine_washer_id?.id ?? null,
             machine_dryer_id: data.machine_dryer_id?.id ?? null,
+            detergent_price: data.detergent_price ?? 0,
             rider_pickup: riderPickup ? {
                 rider_id: riderPickup.rider_id,
                 fullname: riderPickup.fullname,
@@ -335,7 +473,6 @@ exports.router.get("/completed/:id", async (req, res) => {
                 profile_image: staff.profile_image,
                 username: staff.username,
             } : null,
-            // --- เพิ่มใหม่ ---
             review: review ? {
                 rating: review.rating,
                 comment: review.comment ?? null,
@@ -354,55 +491,37 @@ exports.router.post("/review/:id", async (req, res) => {
     const { rating, comment } = req.body;
     try {
         if (typeof rating !== "number" || rating < 1 || rating > 5) {
-            return res.status(400).json({ error: "Rating must be a number between 1-5" });
+            return res.status(400).json({ error: "คะแนนต้องเป็นตัวเลขระหว่าง 1-5" });
         }
         if (comment !== undefined && comment !== null && typeof comment !== "string") {
-            return res.status(400).json({ error: "Comment must be a string" });
+            return res.status(400).json({ error: "ความคิดเห็นต้องเป็นข้อความ" });
         }
         if (typeof comment === "string" && comment.length > 500) {
-            return res.status(400).json({ error: "Comment is too long (max 500 characters)" });
+            return res.status(400).json({ error: "ความคิดเห็นยาวเกินไป (สูงสุด 500 ตัวอักษร)" });
         }
         const orderSnap = await firebase_1.db.collection("orders").doc(orderId).get();
         if (!orderSnap.exists) {
-            return res.status(404).json({ error: "Order not found" });
+            return res.status(404).json({ error: "ไม่พบคำสั่งซื้อ" });
         }
         const orderData = orderSnap.data();
         if (orderData.status !== "completed") {
-            return res.status(400).json({ error: "Order must be completed before reviewing" });
+            return res.status(400).json({ error: "ต้องดำเนินการคำสั่งซื้อเสร็จสิ้นก่อนจึงจะรีวิวได้" });
         }
         const reviewRef = firebase_1.db.collection("reviews").doc(orderId);
         const existingReview = await reviewRef.get();
         if (existingReview.exists) {
-            return res.status(409).json({ error: "This order has already been reviewed" });
+            return res.status(409).json({ error: "คำสั่งซื้อนี้ถูกรีวิวไปแล้ว" });
         }
         const reviewData = {
             review_id: orderId,
-            shop_id: orderData.store_id ?? null,
+            store_id: orderData.store_id ?? null,
             order_id: firebase_1.db.collection("orders").doc(orderId),
             customer_id: orderData.customer_id ?? null,
             rating,
             comment: comment?.trim() || null,
             reviewed_at: firestore_1.Timestamp.now(),
         };
-        await firebase_1.db.runTransaction(async (tx) => {
-            let storeSnap = null;
-            const storeRef = orderData.store_id;
-            if (storeRef) {
-                storeSnap = await tx.get(storeRef);
-            }
-            tx.set(reviewRef, reviewData);
-            if (storeRef && storeSnap && storeSnap.exists) {
-                const storeData = storeSnap.data();
-                const prevCount = storeData.review_count ?? 0;
-                const prevAvg = storeData.avg_rating ?? 0;
-                const newCount = prevCount + 1;
-                const newAvg = (prevAvg * prevCount + rating) / newCount;
-                tx.update(storeRef, {
-                    review_count: newCount,
-                    avg_rating: Math.round(newAvg * 10) / 10,
-                });
-            }
-        });
+        await reviewRef.set(reviewData);
         return res.json({
             data: {
                 rating: reviewData.rating,
@@ -413,74 +532,97 @@ exports.router.post("/review/:id", async (req, res) => {
     }
     catch (err) {
         console.error("POST /review/:id error:", err);
-        return res.status(500).json({ error: "Internal server error" });
+        return res.status(500).json({ error: "เกิดข้อผิดพลาดที่เซิร์ฟเวอร์" });
     }
 });
 exports.router.get("/store/:id/reviews", async (req, res) => {
     const storeId = req.params.id;
     try {
-        const storeRef = firebase_1.db.collection("stores").doc(storeId);
+        const storeRef = firebase_1.db
+            .collection("stores")
+            .doc(storeId);
         const storeSnap = await storeRef.get();
         if (!storeSnap.exists) {
-            return res.status(404).json({ error: "Store not found" });
+            return res.status(404).json({
+                ok: false,
+                message: "ไม่พบร้านค้า",
+            });
         }
-        const storeData = storeSnap.data();
         const reviewsSnap = await firebase_1.db
             .collection("reviews")
-            .where("shop_id", "==", storeRef)
+            .where("store_id", "==", storeRef)
             .orderBy("reviewed_at", "desc")
             .get();
         if (reviewsSnap.empty) {
-            return res.json({
+            return res.status(200).json({
+                ok: true,
                 data: {
-                    avg_rating: storeData.avg_rating ?? 0,
-                    review_count: storeData.review_count ?? 0,
+                    avg_rating: 0,
+                    review_count: 0,
                     reviews: [],
                 },
             });
         }
         const customerIds = [
             ...new Set(reviewsSnap.docs
-                .map((d) => d.data().customer_id?.id)
-                .filter(Boolean)),
+                .map((doc) => doc.data().customer_id?.id)
+                .filter((id) => Boolean(id))),
         ];
+        const customerRefs = customerIds.map((id) => firebase_1.db.collection("customers").doc(id));
+        const customerSnaps = customerRefs.length > 0
+            ? await firebase_1.db.getAll(...customerRefs)
+            : [];
         const customerMap = new Map();
-        if (customerIds.length > 0) {
-            const customerSnaps = await Promise.all(customerIds.map((id) => firebase_1.db.collection("customers").doc(id).get()));
-            customerSnaps.forEach((snap) => {
-                if (snap.exists)
-                    customerMap.set(snap.id, snap.data());
-            });
-        }
+        customerSnaps.forEach((customerSnap) => {
+            if (customerSnap.exists) {
+                customerMap.set(customerSnap.id, customerSnap.data());
+            }
+        });
+        let ratingSum = 0;
         const reviews = reviewsSnap.docs.map((doc) => {
-            const d = doc.data();
-            const customerId = d.customer_id?.id ?? null;
-            const customerData = customerId ? customerMap.get(customerId) ?? null : null;
+            const review = doc.data();
+            const customerId = review.customer_id?.id ?? null;
+            const customerData = customerId
+                ? customerMap.get(customerId) ?? null
+                : null;
+            const rating = typeof review.rating === "number"
+                ? review.rating
+                : 0;
+            ratingSum += rating;
             return {
                 review_id: doc.id,
-                rating: d.rating,
-                comment: d.comment ?? null,
-                reviewed_at: d.reviewed_at
-                    ? { _seconds: d.reviewed_at.seconds }
+                rating,
+                comment: review.comment ?? null,
+                reviewed_at: review.reviewed_at
+                    ? new Date(review.reviewed_at.seconds * 1000).toISOString()
                     : null,
-                customer_fullname: customerData?.fullname ?? "ผู้ใช้ไม่ระบุชื่อ",
-                customer_profile_image: customerData?.profile_image ?? "",
+                reviewer_name: customerData?.fullname ??
+                    "ผู้ใช้ไม่ระบุชื่อ",
+                reviewer_image: customerData?.profile_image ?? "",
             };
         });
-        return res.json({
+        const reviewCount = reviewsSnap.size;
+        const avgRating = reviewCount > 0
+            ? ratingSum / reviewCount
+            : 0;
+        return res.status(200).json({
+            ok: true,
             data: {
-                avg_rating: storeData.avg_rating ?? 0,
-                review_count: storeData.review_count ?? 0,
+                avg_rating: Number(avgRating.toFixed(2)),
+                review_count: reviewCount,
                 reviews,
             },
         });
     }
-    catch (err) {
-        console.error("GET /store/:id/reviews error:", err);
-        return res.status(500).json({ error: "Internal server error" });
+    catch (error) {
+        console.error("GET /store/:id/reviews error:", error);
+        return res.status(500).json({
+            ok: false,
+            message: "Server error",
+        });
     }
 });
-exports.router.get("/store/list/:id", async (req, res) => {
+exports.router.get("/store/process/list/:id", async (req, res) => {
     try {
         const storeId = req.params.id;
         const storeRef = firebase_1.db.collection("stores").doc(storeId);
@@ -540,7 +682,7 @@ exports.router.get("/store/list/:id", async (req, res) => {
                 wash_dry_weight: d.wash_dry_weight ?? 0,
                 service_price: d.service_price ?? 0,
                 delivery_price: d.delivery_price ?? 0,
-                total_amount: (d.service_price ?? 0) + (d.delivery_price ?? 0),
+                total_amount: (d.service_price ?? 0) + (d.delivery_price ?? 0) + (d?.detergent_price ?? 0),
                 detergent_option: d.detergent_option ?? null,
                 before_wash_image: d.before_wash_image ?? "",
                 after_wash_image: d.after_wash_image ?? "",
@@ -551,7 +693,6 @@ exports.router.get("/store/list/:id", async (req, res) => {
                 order_datetime: d.order_datetime
                     ? { _seconds: d.order_datetime.seconds }
                     : null,
-                // ข้อมูลเสริม denormalized
                 customer_fullname: customerData?.fullname ?? "-",
                 customer_phone: customerData?.phone ?? "-",
                 address_full: addressData?.address_text ?? "-",
@@ -564,7 +705,182 @@ exports.router.get("/store/list/:id", async (req, res) => {
         return res.status(500).json({ ok: false, message: "Server error" });
     }
 });
-exports.router.get("/store/completed/:id", async (req, res) => {
+exports.router.get("/store/history/:id", async (req, res) => {
+    try {
+        const storeId = req.params.id;
+        const { day, month, year, status } = req.query;
+        const storeRef = firebase_1.db.collection("stores").doc(storeId);
+        const storeSnap = await storeRef.get();
+        if (!storeSnap.exists) {
+            return res.status(404).json({
+                ok: false,
+                message: "ไม่พบร้านค้า",
+            });
+        }
+        // =========================
+        // Status filter
+        // =========================
+        const allowedStatuses = ["completed", "cancelled"];
+        const statusFilter = status && allowedStatuses.includes(status)
+            ? [status]
+            : allowedStatuses;
+        let query = firebase_1.db
+            .collection("orders")
+            .where("store_id", "==", storeRef)
+            .where("status", "in", statusFilter);
+        // =========================
+        // Filter วัน เดือน ปี
+        // =========================
+        if (day || month || year) {
+            if (!day || !month || !year) {
+                return res.status(400).json({
+                    ok: false,
+                    message: "กรุณาระบุ day, month และ year ให้ครบ",
+                });
+            }
+            const dayNumber = Number(day);
+            const monthNumber = Number(month);
+            const yearNumber = Number(year);
+            if (!Number.isInteger(dayNumber) ||
+                !Number.isInteger(monthNumber) ||
+                !Number.isInteger(yearNumber) ||
+                dayNumber < 1 ||
+                dayNumber > 31 ||
+                monthNumber < 1 ||
+                monthNumber > 12) {
+                return res.status(400).json({
+                    ok: false,
+                    message: "วัน เดือน หรือ ปี ไม่ถูกต้อง",
+                });
+            }
+            const dateString = `${yearNumber}-` +
+                `${String(monthNumber).padStart(2, "0")}-` +
+                `${String(dayNumber).padStart(2, "0")}`;
+            const selectedDate = dayjs_1.default.tz(`${dateString} 00:00:00`, "YYYY-MM-DD HH:mm:ss", TZ);
+            // เช็กวันที่ เช่น 31/02
+            if (!selectedDate.isValid() ||
+                selectedDate.format("YYYY-MM-DD") !== dateString) {
+                return res.status(400).json({
+                    ok: false,
+                    message: "วันที่ไม่ถูกต้อง",
+                });
+            }
+            const startDate = selectedDate.startOf("day");
+            // ใช้วันถัดไป 00:00 แล้ว query <
+            // จะปลอดภัยกว่า endOf("day")
+            const endDate = startDate.add(1, "day");
+            query = query
+                .where("order_datetime", ">=", firestore_1.Timestamp.fromDate(startDate.toDate()))
+                .where("order_datetime", "<", firestore_1.Timestamp.fromDate(endDate.toDate()));
+        }
+        query = query.orderBy("order_datetime", "desc");
+        const snap = await query.get();
+        if (snap.empty) {
+            return res.json({
+                ok: true,
+                data: [],
+            });
+        }
+        // =========================
+        // Customer IDs
+        // =========================
+        const customerIds = [
+            ...new Set(snap.docs
+                .map((doc) => doc.data().customer_id?.id)
+                .filter(Boolean)),
+        ];
+        // =========================
+        // Address IDs
+        // =========================
+        const addressIds = [
+            ...new Set(snap.docs
+                .map((doc) => doc.data().address_id?.id)
+                .filter(Boolean)),
+        ];
+        // =========================
+        // Customers
+        // =========================
+        const customerMap = new Map();
+        if (customerIds.length > 0) {
+            const customerSnaps = await Promise.all(customerIds.map((id) => firebase_1.db.collection("customers").doc(id).get()));
+            customerSnaps.forEach((s) => {
+                if (s.exists) {
+                    customerMap.set(s.id, s.data());
+                }
+            });
+        }
+        // =========================
+        // Addresses
+        // =========================
+        const addressMap = new Map();
+        if (addressIds.length > 0) {
+            const addressSnaps = await Promise.all(addressIds.map((id) => firebase_1.db.collection("customer_addresses").doc(id).get()));
+            addressSnaps.forEach((s) => {
+                if (s.exists) {
+                    addressMap.set(s.id, s.data());
+                }
+            });
+        }
+        // =========================
+        // Response data
+        // =========================
+        const data = snap.docs.map((doc) => {
+            const d = doc.data();
+            const customerId = d.customer_id?.id ?? null;
+            const addressId = d.address_id?.id ?? null;
+            const customerData = customerId
+                ? customerMap.get(customerId) ?? null
+                : null;
+            const addressData = addressId
+                ? addressMap.get(addressId) ?? null
+                : null;
+            return {
+                order_id: doc.id,
+                customer_id: customerId,
+                store_id: d.store_id?.id ?? null,
+                address_id: addressId,
+                rider_pickup_id: d.rider_pickup_id?.id ?? null,
+                rider_delivery_id: d.rider_delivery_id?.id ?? null,
+                staff_id: d.staff_id?.id ?? null,
+                service_type: d.service_type ?? null,
+                wash_dry_weight: d.wash_dry_weight ?? 0,
+                service_price: d.service_price ?? 0,
+                delivery_price: d.delivery_price ?? 0,
+                detergent_price: d.detergent_price ?? 0,
+                total_amount: (d.service_price ?? 0) +
+                    (d.delivery_price ?? 0) +
+                    (d.detergent_price ?? 0),
+                detergent_option: d.detergent_option ?? null,
+                before_wash_image: d.before_wash_image ?? "",
+                after_wash_image: d.after_wash_image ?? "",
+                note: d.note ?? null,
+                machine_washer_id: d.machine_washer_id?.id ?? null,
+                machine_dryer_id: d.machine_dryer_id?.id ?? null,
+                status: d.status ?? "waiting_pickup",
+                order_datetime: d.order_datetime
+                    ? {
+                        _seconds: d.order_datetime.seconds,
+                    }
+                    : null,
+                customer_fullname: customerData?.fullname ?? "-",
+                customer_phone: customerData?.phone ?? "-",
+                address_full: addressData?.address_text ?? "-",
+            };
+        });
+        return res.json({
+            ok: true,
+            data,
+        });
+    }
+    catch (error) {
+        console.error("store history error:", error);
+        return res.status(500).json({
+            ok: false,
+            message: "Server error",
+        });
+    }
+});
+exports.router.get("/store/completed/detail/:id", async (req, res) => {
     const orderId = req.params.id;
     try {
         const orderSnap = await firebase_1.db.collection("orders").doc(orderId).get();
@@ -594,7 +910,7 @@ exports.router.get("/store/completed/:id", async (req, res) => {
             detergent_option: data.detergent_option,
             service_price: data.service_price ?? 0,
             delivery_price: data.delivery_price ?? 0,
-            total_amount: (data.service_price ?? 0) + (data.delivery_price ?? 0),
+            total_amount: (data.service_price ?? 0) + (data.delivery_price ?? 0) + (data?.detergent_price ?? 0),
             wash_dry_weight: data.wash_dry_weight,
             note: data.note,
             before_wash_image: data.before_wash_image,
@@ -604,7 +920,7 @@ exports.router.get("/store/completed/:id", async (req, res) => {
             address_id: data.address_id?.id ?? null,
             machine_washer_id: data.machine_washer_id?.id ?? null,
             machine_dryer_id: data.machine_dryer_id?.id ?? null,
-            // ข้อมูลเสริม denormalized
+            detergent_price: data.detergent_price ?? 0,
             customer_fullname: customer?.fullname ?? "-",
             customer_phone: customer?.phone ?? "-",
             address_full: address?.address_text ?? "-",

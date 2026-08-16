@@ -1,17 +1,43 @@
 import "dotenv/config";
+import dns from "dns";
 import nodemailer from "nodemailer";
+import SMTPTransport from "nodemailer/lib/smtp-transport";
 
-console.log("SMTP_HOST =", process.env.SMTP_HOST);
-console.log("SMTP_PORT =", process.env.SMTP_PORT);
-console.log("SMTP_USER =", process.env.SMTP_USER);
+dns.setDefaultResultOrder("ipv4first");
+
+const SMTP_HOST = process.env.SMTP_HOST;
+const SMTP_PORT = process.env.SMTP_PORT;
+const SMTP_USER = process.env.SMTP_USER;
+const SMTP_PASS = process.env.SMTP_PASS;
+
+console.log("SMTP_HOST =", SMTP_HOST);
+console.log("SMTP_PORT =", SMTP_PORT);
+console.log("SMTP_USER =", SMTP_USER);
 console.log("MAIL_FROM =", process.env.MAIL_FROM);
 
+if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS) {
+  throw new Error(
+    "Missing SMTP env vars: กรุณาตรวจสอบ SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS ใน .env"
+  );
+}
+
+
+
+
 export const mailer = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT),
-  secure: Number(process.env.SMTP_PORT) === 465,
+  host: SMTP_HOST,
+  port: Number(SMTP_PORT),
+  secure: Number(SMTP_PORT) === 465,
+  family: 4,
   auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
+    user: SMTP_USER,
+    pass: SMTP_PASS,
   },
+} as SMTPTransport.Options);
+mailer.verify((err) => {
+  if (err) {
+    console.error("SMTP connection failed:", err);
+  } else {
+    console.log("SMTP connection OK, ready to send mail");
+  }
 });
