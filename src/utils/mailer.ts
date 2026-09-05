@@ -3,6 +3,7 @@ import dns from "dns";
 import nodemailer from "nodemailer";
 import SMTPTransport from "nodemailer/lib/smtp-transport";
 
+// ต้องเรียกทันทีตอน module load ก่อนสิ่งอื่นทำงาน
 dns.setDefaultResultOrder("ipv4first");
 
 const SMTP_HOST = process.env.SMTP_HOST;
@@ -21,19 +22,20 @@ if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS) {
   );
 }
 
-
-
-
 export const mailer = nodemailer.createTransport({
   host: SMTP_HOST,
   port: Number(SMTP_PORT),
   secure: Number(SMTP_PORT) === 465,
   family: 4,
+  connectionTimeout: 15000,
+  greetingTimeout: 10000,
+  socketTimeout: 15000,
   auth: {
     user: SMTP_USER,
     pass: SMTP_PASS,
   },
 } as SMTPTransport.Options);
+
 mailer.verify((err) => {
   if (err) {
     console.error("SMTP connection failed:", err);
