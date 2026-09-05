@@ -26,6 +26,7 @@ export class NotificationService {
         fcm_token: token,
         active: true,
       };
+
       await db.collection("device_tokens").add(newToken);
     }
 
@@ -37,9 +38,13 @@ export class NotificationService {
       .get();
 
     const batch = db.batch();
+
     others.docs.forEach((doc) => {
-      batch.update(doc.ref, { active: false });
+      batch.update(doc.ref, {
+        active: false,
+      });
     });
+
     await batch.commit();
   }
 
@@ -48,20 +53,19 @@ export class NotificationService {
     user_role: string,
     title: string,
     body: string,
-    data: Record<string, string> = {}
+    order_id: string
   ): Promise<void> {
-
     const record: NotificationRecord = {
       user_id,
       user_role,
       title,
       body,
-      data,
+      order_id,
       is_read: false,
       created_at: new Date(),
     };
-    const notifRef = await db.collection("notifications").add(record);
 
+    await db.collection("notifications").add(record);
 
     const snap = await db
       .collection("device_tokens")
@@ -81,14 +85,14 @@ export class NotificationService {
       try {
         await messaging.send({
           token,
-
           notification: {
             title,
             body,
           },
-
-          data,
-
+          data: {
+            order_id,
+            role: user_role,
+          },
           android: {
             priority: "high",
             notification: {
@@ -99,11 +103,16 @@ export class NotificationService {
         });
       } catch (error: any) {
         console.error("FCM Error:", error);
+
         if (
-          error.code === "messaging/registration-token-not-registered" ||
-          error.errorInfo?.code === "messaging/registration-token-not-registered"
+          error.code ===
+            "messaging/registration-token-not-registered" ||
+          error.errorInfo?.code ===
+            "messaging/registration-token-not-registered"
         ) {
-          await doc.ref.update({ active: false } satisfies Partial<DeviceToken>);
+          await doc.ref.update({
+            active: false,
+          } satisfies Partial<DeviceToken>);
         }
       }
     }
@@ -128,21 +137,54 @@ export class NotificationService {
     }));
   }
 
-  static async markAsRead(notification_id: string): Promise<void> {
+  static async markAsRead(
+    notification_id: string
+  ): Promise<void> {
     await db
       .collection("notifications")
       .doc(notification_id)
-      .update({ is_read: true } satisfies Partial<NotificationRecord>);
+      .update({
+        is_read: true,
+      } satisfies Partial<NotificationRecord>);
   }
-  static async countUnread(user_id: string, user_role: string): Promise<number> {
-  const snap = await db
+
+  static async countUnread(
+    user_id: string,
+    user_role: string
+  ): Promise<number> {
+    const snap = await db
+      .collection("notifications")
+      .where("user_id", "==", user_id)
+      .where("user_role", "==", user_role)
+      .where("is_read", "==", false)
+      .count()
+      .get();
+
+    return snap.data().count;
+  }
+  static async markAllAsRead(
+  user_id: string,
+  user_role: string
+): Promise<void> {
+  const data = await db
     .collection("notifications")
     .where("user_id", "==", user_id)
     .where("user_role", "==", user_role)
     .where("is_read", "==", false)
-    .count()
     .get();
 
-  return snap.data().count;
+  if (data.empty) {
+    return;
+  }
+
+  const batch = db.batch();
+
+  data.docs.forEach((doc) => {
+    batch.update(doc.ref, {
+      is_read: true,
+    } satisfies Partial<NotificationRecord>);
+  });
+
+  await batch.commit();
 }
 }

@@ -800,7 +800,7 @@ router.delete("/addresses/delete/:id", async (req, res) => {
   }
 });
 
-// ดึงร้านค้ามาแสดงทั้หมด
+
 router.get("/getstores", async (req, res) => {
   try {
     const search = (req.query.search as string || "").trim();
@@ -808,7 +808,7 @@ router.get("/getstores", async (req, res) => {
     const customerLat = Number(req.query.lat);
     const customerLng = Number(req.query.lng);
 
-    const storesnap = await db.collection("stores").get();
+    const storesnap = await db.collection("stores").where("status","!=","PENDING").get();
 
     let data = storesnap.docs.map(data => {
       const storeData = data.data() as StoreData;

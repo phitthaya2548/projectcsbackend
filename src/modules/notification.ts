@@ -1,4 +1,3 @@
-
 export interface DeviceToken {
   user_id: string;
   user_role: string;
@@ -11,7 +10,7 @@ export interface NotificationRecord {
   user_role: string;
   title: string;
   body: string;
-  data: Record<string, string>;
+  order_id: string;
   is_read: boolean;
   created_at: Date;
 }

@@ -97,3 +97,19 @@ router.get("/unread_count", async (req, res) => {
     return res.status(500).json({ ok: false, message: "server error" });
   }
 });
+router.post("/mark-all-read", async (req, res) => {
+  try {
+    const { user_id, user_role } = req.body;
+
+    if (!user_id || !user_role) {
+      return res.status(400).json({ ok: false, message: "ข้อมูลไม่ครบ" });
+    }
+
+    await NotificationService.markAllAsRead(user_id, user_role);
+
+    return res.json({ ok: true, message: "อ่านทั้งหมดแล้ว" });
+  } catch (error) {
+    console.error("Mark All Read Error:", error);
+    return res.status(500).json({ ok: false, message: "server error" });
+  }
+});

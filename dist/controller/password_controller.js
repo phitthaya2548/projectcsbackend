@@ -47,6 +47,24 @@ exports.router = (0, express_1.Router)();
 function hashOtp(otp) {
     return crypto_1.default.createHash("sha256").update(otp).digest("hex");
 }
+function validatePasswordStrength(password) {
+    if (password.length < 8) {
+        return "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร";
+    }
+    if (!/[a-z]/.test(password)) {
+        return "รหัสผ่านต้องมีตัวพิมพ์เล็กอย่างน้อย 1 ตัว";
+    }
+    if (!/[A-Z]/.test(password)) {
+        return "รหัสผ่านต้องมีตัวพิมพ์ใหญ่อย่างน้อย 1 ตัว";
+    }
+    if (!/[0-9]/.test(password)) {
+        return "รหัสผ่านต้องมีตัวเลขอย่างน้อย 1 ตัว";
+    }
+    if (!/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password)) {
+        return "รหัสผ่านต้องมีอักขระพิเศษอย่างน้อย 1 ตัว (เช่น ! @ # $ %)";
+    }
+    return null;
+}
 async function findUserByEmail(email) {
     const checks = await Promise.all([
         firebase_1.db.collection("customers").where("email", "==", email).limit(1).get(),
@@ -84,7 +102,6 @@ exports.router.post("/forgot_password", async (req, res) => {
             .collection("password_resets")
             .where("email", "==", email)
             .get();
-        // ลบ OTP เก่าแบบขนาน แทนการ loop ทีละตัว
         await Promise.all(oldSnap.docs.map((doc) => doc.ref.delete()));
         const resetData = {
             email: email,
@@ -94,12 +111,10 @@ exports.router.post("/forgot_password", async (req, res) => {
         };
         const resetRef = firebase_1.db.collection("password_resets").doc();
         await resetRef.set(resetData);
-        // ตอบกลับผู้ใช้ทันที ไม่ต้องรอส่งอีเมลเสร็จ
         res.json({
             ok: true,
             message: "หากอีเมลนี้มีอยู่ในระบบ จะมี OTP ถูกส่งไป",
         });
-        // ส่งอีเมลแบบ background (fire-and-forget) ไม่บล็อก response
         mailer_1.mailer
             .sendMail({
             from: `"WashAndDry Support" <${process.env.MAIL_FROM}>`,
@@ -128,6 +143,63 @@ exports.router.post("/forgot_password", async (req, res) => {
         });
     }
 });
+exports.router.post("/verify_otp", async (req, res) => {
+    try {
+        const { email, otp } = req.body;
+        if (!email || !otp) {
+            return res.status(400).json({
+                ok: false,
+                message: "กรุณากรอกข้อมูลให้ครบ",
+            });
+        }
+        const resetSnap = await firebase_1.db
+            .collection("password_resets")
+            .where("email", "==", email)
+            .limit(1)
+            .get();
+        if (resetSnap.empty) {
+            return res.status(400).json({
+                ok: false,
+                message: "ไม่พบคำขอรีเซ็ตรหัสผ่าน กรุณาขอ OTP ใหม่",
+            });
+        }
+        const resetDoc = resetSnap.docs[0];
+        const resetData = resetDoc.data();
+        if (resetData.used) {
+            return res.status(400).json({
+                ok: false,
+                message: "OTP นี้ถูกใช้งานไปแล้ว",
+            });
+        }
+        const expiresAt = resetData.expires_at instanceof Date
+            ? resetData.expires_at
+            : resetData.expires_at.toDate();
+        if (new Date() > expiresAt) {
+            return res.status(400).json({
+                ok: false,
+                message: "OTP หมดอายุแล้ว กรุณาขอ OTP ใหม่",
+            });
+        }
+        const isMatch = hashOtp(otp) === resetData.otp;
+        if (!isMatch) {
+            return res.status(400).json({
+                ok: false,
+                message: "OTP ไม่ถูกต้อง",
+            });
+        }
+        return res.json({
+            ok: true,
+            message: "ยืนยัน OTP สำเร็จ",
+        });
+    }
+    catch (e) {
+        console.error("verify-otp error:", e);
+        return res.status(500).json({
+            ok: false,
+            message: "Server error",
+        });
+    }
+});
 exports.router.post("/reset_password", async (req, res) => {
     try {
         const { email, otp, newPassword } = req.body;
@@ -137,10 +209,11 @@ exports.router.post("/reset_password", async (req, res) => {
                 message: "กรุณากรอกข้อมูลให้ครบ",
             });
         }
-        if (newPassword.length < 6) {
+        const passwordError = validatePasswordStrength(newPassword);
+        if (passwordError) {
             return res.status(400).json({
                 ok: false,
-                message: "รหัสผ่านต้องอย่างน้อย 6 ตัว",
+                message: passwordError,
             });
         }
         const resetSnap = await firebase_1.db

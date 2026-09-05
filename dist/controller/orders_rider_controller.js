@@ -151,19 +151,6 @@ exports.router.put("/update/status/:id", upload_1.upload.single("image"), async 
                 if (publicUrl) {
                     updateData.after_wash_image = publicUrl;
                 }
-                const servicePrice = Number(freshOrderData.service_price ?? 0);
-                const deliveryPrice = Number(freshOrderData.delivery_price ?? 0);
-                const detergentPrice = Number(freshOrderData.detergent_price ?? 0);
-                const totalAmount = servicePrice +
-                    deliveryPrice +
-                    detergentPrice;
-                if (!Number.isFinite(totalAmount) ||
-                    totalAmount < 0) {
-                    throw new Error("INVALID_TOTAL_AMOUNT");
-                }
-                tx.update(freshOrderData.store_id, {
-                    wallet_balance: firebase_1.FieldValue.increment(totalAmount),
-                });
             }
             tx.update(orderRef, updateData);
             customerId =
@@ -194,23 +181,19 @@ exports.router.put("/update/status/:id", upload_1.upload.single("image"), async 
         const notificationMap = {
             pickup_completed: {
                 title: "ไรเดอร์รับผ้าเรียบร้อยแล้ว",
-                body: "ไรเดอร์รับผ้าของคุณเรียบร้อยแล้ว กำลังนำไปส่งที่ร้านซัก/อบ",
+                body: "ไรเดอร์รับผ้าของคุณเรียบร้อยแล้ว กำลังนำไปส่งที่ร้าน",
             },
             arrived_at_shop: {
                 title: "ไรเดอร์ถึงร้านแล้ว",
-                body: "ไรเดอร์กำลังส่งผ้าของคุณเข้าร้านซัก/อบ",
+                body: "ไรเดอร์กำลังเอาผ้าของคุณเข้าร้าน",
             },
             waiting_wash: {
-                title: "ผ้าของคุณเข้าคิวซัก/อบแล้ว",
-                body: "ผ้าของคุณเข้าคิวซัก/อบเรียบร้อยแล้ว",
-            },
-            waiting_dry: {
-                title: "ผ้าของคุณเข้าคิวซัก/อบแล้ว",
-                body: "ผ้าของคุณเข้าคิวซัก/อบเรียบร้อยแล้ว",
+                title: "ผ้าของคุณกำลังรอการคำนวณราคา",
+                body: "ผ้าของคุณกำลังรอการคำนวณราคา",
             },
             delivery_heading_to_shop: {
                 title: "ไรเดอร์กำลังไปรับผ้าของคุณที่ร้าน",
-                body: "ไรเดอร์กำลังไปรับผ้าของคุณที่ร้านซัก/อบ",
+                body: "",
             },
             delivery_pickup_completed: {
                 title: "ไรเดอร์รับผ้าของคุณเรียบร้อยแล้ว",
@@ -218,7 +201,7 @@ exports.router.put("/update/status/:id", upload_1.upload.single("image"), async 
             },
             delivery_in_progress: {
                 title: "ไรเดอร์กำลังนำผ้าของคุณไปส่ง",
-                body: "ไรเดอร์กำลังนำผ้าของคุณไปส่งที่บ้านของคุณ",
+                body: "ไรเดอร์กำลังนำผ้าของคุณไปส่งที่อยู่ของคุณ",
             },
             completed: {
                 title: "ส่งผ้าเรียบร้อยแล้ว",
@@ -228,10 +211,7 @@ exports.router.put("/update/status/:id", upload_1.upload.single("image"), async 
         const notification = notificationMap[status];
         if (customerId && notification) {
             try {
-                await notification_1.NotificationService.sendToUser(customerId, "customer", notification.title, notification.body, {
-                    order_id,
-                    status,
-                });
+                await notification_1.NotificationService.sendToUser(customerId, "customer", notification.title, notification.body, order_id);
             }
             catch (error) {
                 console.error("send notification error:", error);
@@ -696,18 +676,12 @@ exports.router.post("/accept/:id", async (req, res) => {
                 if (newStatus ===
                     "pickup_in_progress") {
                     await notification_1.NotificationService
-                        .sendToUser(customerId, "customer", "ไรเดอร์รับงานแล้ว", "ไรเดอร์กำลังไปรับผ้าของคุณ", {
-                        order_id,
-                        status: newStatus,
-                    });
+                        .sendToUser(customerId, "customer", "ไรเดอร์รับงานแล้ว", "ไรเดอร์กำลังไปรับผ้าของคุณ", order_id);
                 }
                 else if (newStatus ===
                     "delivery_heading_to_shop") {
                     await notification_1.NotificationService
-                        .sendToUser(customerId, "customer", "ไรเดอร์รับงานแล้ว", "ไรเดอร์กำลังไปรับผ้าของคุณที่ร้าน", {
-                        order_id,
-                        status: newStatus,
-                    });
+                        .sendToUser(customerId, "customer", "ไรเดอร์รับงานแล้ว", "ไรเดอร์กำลังไปรับผ้าของคุณที่ร้าน", order_id);
                 }
             }
             catch (error) {

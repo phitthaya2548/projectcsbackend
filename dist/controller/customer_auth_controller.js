@@ -53,17 +53,6 @@ function checkCustomerProfile(data) {
         "email",
     ]);
 }
-function checkStoreProfile(data) {
-    return checkProfile(data, [
-        "store_name",
-        "phone",
-        "opening_hours",
-        "closed_hours",
-        "latitude",
-        "longitude",
-        "service_radius",
-    ]);
-}
 async function getCustomerAddressSummary(customerId) {
     const customerRef = firebase_js_1.db
         .collection("customers")
@@ -170,7 +159,6 @@ exports.router.post("/login", async (req, res) => {
                     message: "รหัสผ่านไม่ถูกต้อง",
                 });
             }
-            const storeStatus = checkStoreProfile(data);
             return res.json({
                 ok: true,
                 role: "store",
@@ -181,8 +169,6 @@ exports.router.post("/login", async (req, res) => {
                 phone: data.phone ?? "",
                 profile_image: data.profile_image ?? null,
                 status: data.status ?? "",
-                profile_complete: storeStatus.profile_complete,
-                missing_fields: storeStatus.missing_fields,
             });
         }
         const riderSnap = await firebase_js_1.db

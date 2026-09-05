@@ -13,7 +13,7 @@ export const router = Router();
 router.put("/profile/:id", upload.single("profile_image"), async (req, res) => {
   try {
     const storeId = req.params.id as string;
- console.log("body:", req.body); 
+    console.log("body:", req.body);
     const ref = db.collection("stores").doc(storeId);
     const exist = await ref.get();
 
@@ -23,6 +23,8 @@ router.put("/profile/:id", upload.single("profile_image"), async (req, res) => {
         message:"ไม่พบร้านค้า"
       });
     }
+
+    const currentStatus = exist.data()?.status;
 
     const {
       store_name,
@@ -44,27 +46,27 @@ router.put("/profile/:id", upload.single("profile_image"), async (req, res) => {
 
     const emailNorm = email?.trim().toLowerCase() || "";
 
-  if (email !== undefined) {
-  const [riderSnap, storeSnap, customerSnap, staffSnap] = await Promise.all([
-    db.collection("riders").where("email", "==", emailNorm).limit(1).get(),
-    db.collection("stores").where("email", "==", emailNorm).limit(1).get(),
-    db.collection("customers").where("email", "==", emailNorm).limit(1).get(),
-    db.collection("laundry_staff").where("email", "==", emailNorm).limit(1).get(),
-  ]);
+    if (email !== undefined) {
+      const [riderSnap, storeSnap, customerSnap, staffSnap] = await Promise.all([
+        db.collection("riders").where("email", "==", emailNorm).limit(1).get(),
+        db.collection("stores").where("email", "==", emailNorm).limit(1).get(),
+        db.collection("customers").where("email", "==", emailNorm).limit(1).get(),
+        db.collection("laundry_staff").where("email", "==", emailNorm).limit(1).get(),
+      ]);
 
-  const usedInRiders = !riderSnap.empty;
-  const usedInCustomers = !customerSnap.empty;
-  const usedInStaff = !staffSnap.empty;
-  const usedInOtherStore =
-    !storeSnap.empty && storeSnap.docs[0].id !== storeId;
+      const usedInRiders = !riderSnap.empty;
+      const usedInCustomers = !customerSnap.empty;
+      const usedInStaff = !staffSnap.empty;
+      const usedInOtherStore =
+        !storeSnap.empty && storeSnap.docs[0].id !== storeId;
 
-  if (usedInRiders || usedInCustomers || usedInStaff || usedInOtherStore) {
-    return res.status(409).json({
-      ok: false,
-      message: "อีเมลนี้ถูกใช้แล้ว"
-    });
-  }
-}
+      if (usedInRiders || usedInCustomers || usedInStaff || usedInOtherStore) {
+        return res.status(409).json({
+          ok: false,
+          message: "อีเมลนี้ถูกใช้แล้ว"
+        });
+      }
+    }
 
     const update: Record<string,any> = {};
 
@@ -92,8 +94,12 @@ router.put("/profile/:id", upload.single("profile_image"), async (req, res) => {
     if (line_id !== undefined)
       update.line_id = line_id || null;
 
-    if (status !== undefined)
+    if (status !== undefined) {
       update.status = status;
+    } else if (currentStatus === "PENDING") {
+      update.status = "TEMP_CLOSED";
+    }
+
     if (detergent_price !== undefined) {
       const detergent = Number(detergent_price);
       if (!isNaN(detergent)) update.detergent_price = detergent;
@@ -113,7 +119,6 @@ router.put("/profile/:id", upload.single("profile_image"), async (req, res) => {
       const lng = Number(longitude);
       if (!isNaN(lng)) update.longitude = lng;
     }
-
 
     if (delivery_min !== undefined) {
       const min = Number(delivery_min);
@@ -170,7 +175,7 @@ router.put("/profile/:id", upload.single("profile_image"), async (req, res) => {
         service_radius: Number(data.service_radius ?? 0),
         latitude: Number(data.latitude ?? 0),
         longitude: Number(data.longitude ?? 0),
-        status: data.status ?? "เปิดร้าน",
+        status: data.status ?? "OPEN",
         profile_image: data.profile_image ?? "",
         wallet_balance: Number(data.wallet_balance ?? 0),
         delivery_min: Number(data.delivery_min ?? 0),
@@ -220,7 +225,7 @@ router.get("/profile/:id", async (req, res) => {
         service_radius: Number(data.service_radius  ?? 0),
         latitude:       Number(data.latitude        ?? 0),
         longitude:      Number(data.longitude       ?? 0),
-        status:         data.status         ?? "เปิดร้าน",
+        status:         data.status         ?? "OPEN",
         profile_image:  data.profile_image  ?? "",
         wallet_balance: Number(data.wallet_balance  ?? 0),
         delivery_min:   Number(data.delivery_min    ?? 0),
@@ -285,12 +290,12 @@ router.get("/customer/profile/:id", async (req, res) => {
         service_radius: Number(data.service_radius ?? 0),
         latitude: Number(data.latitude ?? 0),
         longitude: Number(data.longitude ?? 0),
-        status: data.status ?? "เปิดร้าน",
+        status: data.status ?? "OPEN",
         profile_image: data.profile_image ?? "",
         wallet_balance: Number(data.wallet_balance ?? 0),
         machine_wash_count: machinewashcount,
         machine_dry_count: machinedrycount,
-
+        detergent_price: data.detergent_price ?? 0
       },
     });
 

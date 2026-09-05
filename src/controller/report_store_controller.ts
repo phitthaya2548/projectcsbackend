@@ -51,6 +51,24 @@ router.get("/store/walletbalance/:storeId", async (req, res) => {
     return res.status(500).json({ ok: false, message: "Server error" });
   }
 });
+router.get("/store/walletbalance/:storeId", async (req, res) => {
+  try {
+    const storeId = req.params.storeId;
+    const storeSnap = await db.collection("stores").doc(storeId).get();
+
+    if (!storeSnap.exists) {
+      return res.status(404).json({ ok: false, message: "Store not found" });
+    }
+
+    return res.status(200).json({
+      ok: true,
+      wallet_balance: storeSnap.data()?.wallet_balance ?? 0,
+    });
+  } catch (error) {
+    console.error("WALLET REPORT ERROR:", error);
+    return res.status(500).json({ ok: false, message: "Server error" });
+  }
+});
 
 router.get("/store/revenue/:storeId", async (req, res) => {
   try {

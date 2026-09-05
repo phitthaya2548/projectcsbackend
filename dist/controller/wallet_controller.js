@@ -115,13 +115,25 @@ exports.router.post("/checkslip", upload.single("file"), async (req, res) => {
             let runningBalance = currentBalance + amount;
             for (const orderDoc of pendingOrdersSnap.docs) {
                 const orderData = orderDoc.data();
-                const servicePrice = Number(orderData?.service_price || 0);
-                const deliveryPrice = Number(orderData?.delivery_price || 0);
-                const detergenPrice = Number(orderData?.detergent_price || 0);
-                const amountDue = servicePrice + deliveryPrice + detergenPrice;
+                const storeRef = orderData.store_id;
+                const servicePrice = Number(orderData.service_price || 0);
+                const deliveryPrice = Number(orderData.delivery_price || 0);
+                const detergentPrice = Number(orderData.detergent_price || 0);
+                const amountDue = servicePrice +
+                    deliveryPrice +
+                    detergentPrice;
                 if (amountDue > 0 && runningBalance >= amountDue) {
+                    if (!storeRef) {
+                        throw new Error("STORE_NOT_FOUND");
+                    }
                     runningBalance -= amountDue;
                     paidOrderIds.push(orderDoc.id);
+                    tx.update(orderDoc.ref, {
+                        status: "payment_completed",
+                    });
+                    tx.update(storeRef, {
+                        wallet_balance: firebase_1.FieldValue.increment(amountDue),
+                    });
                 }
                 else {
                     break;

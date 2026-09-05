@@ -32,19 +32,7 @@ function checkCustomerProfile(
   ]);
 }
 
-function checkStoreProfile(
-  data: Partial<StoreData>
-) {
-  return checkProfile(data, [
-    "store_name",
-    "phone",
-    "opening_hours",
-    "closed_hours",
-    "latitude",
-    "longitude",
-    "service_radius",
-  ]);
-}
+
 
 async function getCustomerAddressSummary(
   customerId: string
@@ -209,10 +197,6 @@ router.post("/login", async (req, res) => {
           message: "รหัสผ่านไม่ถูกต้อง",
         });
       }
-
-      const storeStatus =
-        checkStoreProfile(data);
-
       return res.json({
         ok: true,
         role: "store",
@@ -224,10 +208,6 @@ router.post("/login", async (req, res) => {
         profile_image:
           data.profile_image ?? null,
         status: data.status ?? "",
-        profile_complete:
-          storeStatus.profile_complete,
-        missing_fields:
-          storeStatus.missing_fields,
       });
     }
 

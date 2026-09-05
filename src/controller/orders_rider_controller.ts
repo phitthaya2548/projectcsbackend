@@ -200,34 +200,12 @@ router.put(
         }
 
         if (status === "completed") {
-          updateData.rider_delivery_id = riderRef;
+  updateData.rider_delivery_id = riderRef;
 
-          if (publicUrl) {
-            updateData.after_wash_image = publicUrl;
-          }
-
-          const servicePrice =
-            Number(freshOrderData.service_price ?? 0);
-          const deliveryPrice =
-            Number(freshOrderData.delivery_price ?? 0);
-          const detergentPrice =
-            Number(freshOrderData.detergent_price ?? 0);
-          const totalAmount =
-            servicePrice +
-            deliveryPrice +
-            detergentPrice;
-          if (
-            !Number.isFinite(totalAmount) ||
-            totalAmount < 0
-          ) {
-            throw new Error("INVALID_TOTAL_AMOUNT");
-          }
-
-          tx.update(freshOrderData.store_id, {
-            wallet_balance:
-              FieldValue.increment(totalAmount),
-          });
-        }
+  if (publicUrl) {
+    updateData.after_wash_image = publicUrl;
+  }
+}
 
         tx.update(orderRef, updateData);
 
@@ -273,32 +251,24 @@ router.put(
         pickup_completed: {
           title: "ไรเดอร์รับผ้าเรียบร้อยแล้ว",
           body:
-            "ไรเดอร์รับผ้าของคุณเรียบร้อยแล้ว กำลังนำไปส่งที่ร้านซัก/อบ",
+            "ไรเดอร์รับผ้าของคุณเรียบร้อยแล้ว กำลังนำไปส่งที่ร้าน",
         },
 
         arrived_at_shop: {
           title: "ไรเดอร์ถึงร้านแล้ว",
-          body:
-            "ไรเดอร์กำลังส่งผ้าของคุณเข้าร้านซัก/อบ",
+          body:"ไรเดอร์กำลังเอาผ้าของคุณเข้าร้าน",
         },
 
-        waiting_wash: {
-          title: "ผ้าของคุณเข้าคิวซัก/อบแล้ว",
-          body:
-            "ผ้าของคุณเข้าคิวซัก/อบเรียบร้อยแล้ว",
-        },
-
-        waiting_dry: {
-          title: "ผ้าของคุณเข้าคิวซัก/อบแล้ว",
-          body:
-            "ผ้าของคุณเข้าคิวซัก/อบเรียบร้อยแล้ว",
-        },
+     waiting_wash: {
+  title: "ผ้าของคุณกำลังรอการคำนวณราคา",
+  body: "ผ้าของคุณกำลังรอการคำนวณราคา",
+},
 
         delivery_heading_to_shop: {
           title:
             "ไรเดอร์กำลังไปรับผ้าของคุณที่ร้าน",
           body:
-            "ไรเดอร์กำลังไปรับผ้าของคุณที่ร้านซัก/อบ",
+            "",
         },
 
         delivery_pickup_completed: {
@@ -312,7 +282,7 @@ router.put(
           title:
             "ไรเดอร์กำลังนำผ้าของคุณไปส่ง",
           body:
-            "ไรเดอร์กำลังนำผ้าของคุณไปส่งที่บ้านของคุณ",
+            "ไรเดอร์กำลังนำผ้าของคุณไปส่งที่อยู่ของคุณ",
         },
 
         completed: {
@@ -332,10 +302,7 @@ router.put(
             "customer",
             notification.title,
             notification.body,
-            {
-              order_id,
-              status,
-            }
+            order_id
           );
         } catch (error) {
           console.error(
@@ -1128,10 +1095,7 @@ router.post("/accept/:id", async (req, res) => {
               "customer",
               "ไรเดอร์รับงานแล้ว",
               "ไรเดอร์กำลังไปรับผ้าของคุณ",
-              {
-                order_id,
-                status: newStatus,
-              }
+              order_id
             );
         } else if (
           newStatus ===
@@ -1143,10 +1107,7 @@ router.post("/accept/:id", async (req, res) => {
               "customer",
               "ไรเดอร์รับงานแล้ว",
               "ไรเดอร์กำลังไปรับผ้าของคุณที่ร้าน",
-              {
-                order_id,
-                status: newStatus,
-              }
+              order_id
             );
         }
       } catch (error) {

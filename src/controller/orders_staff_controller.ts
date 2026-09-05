@@ -106,10 +106,7 @@ router.put("/start_wash/:id", async (req, res) => {
           isDry
             ? "พนักงานซักอบกำลังดำเนินการอบผ้าให้คุณ"
             : "พนักงานซักอบกำลังดำเนินการซักผ้าให้คุณ",
-          {
-            order_id,
-            status: currentStatus,
-          }
+          order_id
         );
       } catch (error) {
         console.error(
@@ -389,10 +386,7 @@ router.put("/update/status/:id", async (req, res) => {
             "customer",
             "พนักงานกำลังอบผ้าให้คุณ",
             "",
-            {
-              order_id: orderId,
-              status: updatedStatus,
-            }
+            orderId
           );
         }
 
@@ -402,10 +396,7 @@ router.put("/update/status/:id", async (req, res) => {
             "customer",
             "พนักงานซักอบซักผ้าเสร็จแล้ว",
             "พนักงานซักอบกำลังเตรียมส่งผ้าให้คุณ",
-            {
-              order_id: orderId,
-              status: updatedStatus,
-            }
+            orderId
           );
         }
       } catch (error) {
@@ -449,10 +440,7 @@ router.put("/calculate/:id", async (req, res) => {
     const { staff_id: staffId, weight, washer_id: washerId, dryer_id: dryerId } = req.body;
 
     if (!staffId || !Number.isFinite(weight) || weight <= 0) {
-      return res.status(400).json({
-        ok: false,
-        message: "กรุณาระบุ staff_id และน้ำหนักให้ถูกต้อง",
-      });
+      return res.status(400).json({ ok: false, message: "กรุณาระบุ staff_id และน้ำหนักให้ถูกต้อง" });
     }
 
     const orderRef = db.collection("orders").doc(orderId);
@@ -465,19 +453,13 @@ router.put("/calculate/:id", async (req, res) => {
     const order = orderSnap.data() as Order;
 
     if (order.staff_id?.id !== staffId) {
-      return res.status(403).json({
-        ok: false,
-        message: "คุณไม่ใช่ staff ที่รับงานนี้",
-      });
+      return res.status(403).json({ ok: false, message: "คุณไม่ใช่ staff ที่รับงานนี้" });
     }
 
     const allowedStatuses: OrderStatus[] = ["waiting_wash", "waiting_dry", "waiting_payment"];
 
     if (!allowedStatuses.includes(order.status)) {
-      return res.status(409).json({
-        ok: false,
-        message: "สถานะออเดอร์ไม่รองรับการคำนวณราคา",
-      });
+      return res.status(409).json({ ok: false, message: "สถานะออเดอร์ไม่รองรับการคำนวณราคา" });
     }
 
     if (!order.store_id || !order.customer_id) {
@@ -494,7 +476,7 @@ router.put("/calculate/:id", async (req, res) => {
     }
 
     const storeData = storeSnap.data() as StoreData;
-    const detergentPrice = storeData.detergent_price ?? 0;
+    const detergentPrice = Number(storeData.detergent_price ?? 0);
     const serviceType = order.service_type;
     const detergentOption = order.detergent_option as DETERGENT_OPTIONS;
 
@@ -520,46 +502,29 @@ router.put("/calculate/:id", async (req, res) => {
       dryerRef ? dryerRef.get() : null,
     ]);
 
-    const washer = washerSnap?.exists ? washerSnap.data() as Machine : null;
-    const dryer = dryerSnap?.exists ? dryerSnap.data() as Machine : null;
+    const washer = washerSnap?.exists ? (washerSnap.data() as Machine) : null;
+    const dryer = dryerSnap?.exists ? (dryerSnap.data() as Machine) : null;
 
     if (needsWasher) {
-      if (!washer) {
-        return res.status(404).json({ ok: false, message: "ไม่พบเครื่องซัก" });
-      }
-
-      if (washer.status !== "available") {
-        return res.status(422).json({ ok: false, message: "เครื่องซักไม่ว่าง" });
-      }
-
-      if (washer.capacity < weight) {
-        return res.status(422).json({ ok: false, message: "เครื่องซักรับน้ำหนักไม่พอ" });
-      }
+      if (!washer) return res.status(404).json({ ok: false, message: "ไม่พบเครื่องซัก" });
+      if (washer.status !== "available") return res.status(422).json({ ok: false, message: "เครื่องซักไม่ว่าง" });
+      if (washer.capacity < weight) return res.status(422).json({ ok: false, message: "เครื่องซักรับน้ำหนักไม่พอ" });
     }
 
     if (needsDryer) {
-      if (!dryer) {
-        return res.status(404).json({ ok: false, message: "ไม่พบเครื่องอบ" });
-      }
-
-      if (dryer.status !== "available") {
-        return res.status(422).json({ ok: false, message: "เครื่องอบไม่ว่าง" });
-      }
-
-      if (dryer.capacity < weight) {
-        return res.status(422).json({ ok: false, message: "เครื่องอบรับน้ำหนักไม่พอ" });
-      }
+      if (!dryer) return res.status(404).json({ ok: false, message: "ไม่พบเครื่องอบ" });
+      if (dryer.status !== "available") return res.status(422).json({ ok: false, message: "เครื่องอบไม่ว่าง" });
+      if (dryer.capacity < weight) return res.status(422).json({ ok: false, message: "เครื่องอบรับน้ำหนักไม่พอ" });
     }
 
-    const servicePrice = (washer?.price ?? 0) + (dryer?.price ?? 0);
-
-    const detergentFee =
-      needsWasher && detergentOption === "no_detergent"
-        ? detergentPrice
-        : 0;
-
-    const deliveryFee = order.delivery_price ?? 0;
+    const servicePrice = Number(washer?.price ?? 0) + Number(dryer?.price ?? 0);
+    const detergentFee = needsWasher && detergentOption === "no_detergent" ? detergentPrice : 0;
+    const deliveryFee = Number(order.delivery_price ?? 0);
     const grandTotal = servicePrice + detergentFee + deliveryFee;
+
+    if (!Number.isFinite(grandTotal) || grandTotal < 0) {
+      return res.status(400).json({ ok: false, message: "ยอดเงินไม่ถูกต้อง" });
+    }
 
     let paid = false;
     let walletAfter = 0;
@@ -568,10 +533,7 @@ router.put("/calculate/:id", async (req, res) => {
 
     await db.runTransaction(async (tx) => {
       const freshOrderSnap = await tx.get(orderRef);
-
-      if (!freshOrderSnap.exists) {
-        throw { code: 404, message: "ไม่พบออเดอร์" };
-      }
+      if (!freshOrderSnap.exists) throw { code: 404, message: "ไม่พบออเดอร์" };
 
       const freshOrder = freshOrderSnap.data() as Order;
 
@@ -584,24 +546,23 @@ router.put("/calculate/:id", async (req, res) => {
       }
 
       const customerRef = freshOrder.customer_id;
+      const storeRef = freshOrder.store_id;
 
-      if (!customerRef) {
-        throw { code: 404, message: "ไม่พบ customer" };
-      }
+      if (!customerRef) throw { code: 404, message: "ไม่พบ customer" };
+      if (!storeRef) throw { code: 404, message: "ไม่พบร้านค้า" };
 
-      const [customerSnap, freshWasherSnap, freshDryerSnap] = await Promise.all([
+      const [customerSnap, freshStoreSnap, freshWasherSnap, freshDryerSnap] = await Promise.all([
         tx.get(customerRef),
+        tx.get(storeRef),
         washerRef ? tx.get(washerRef) : null,
         dryerRef ? tx.get(dryerRef) : null,
       ]);
 
-      if (!customerSnap.exists) {
-        throw { code: 404, message: "ไม่พบ customer" };
-      }
+      if (!customerSnap.exists) throw { code: 404, message: "ไม่พบ customer" };
+      if (!freshStoreSnap.exists) throw { code: 404, message: "ไม่พบร้านค้า" };
 
-      const wallet = customerSnap.data()?.wallet_balance ?? 0;
+      const wallet = Number(customerSnap.data()?.wallet_balance ?? 0);
       const canPayNow = wallet >= grandTotal;
-
       const nextStatus: OrderStatus = canPayNow
         ? serviceType === "dry" ? "drying" : "washing"
         : "waiting_payment";
@@ -630,16 +591,12 @@ router.put("/calculate/:id", async (req, res) => {
       tx.update(orderRef, updateData);
 
       if (canPayNow) {
-        if (washerRef) {
-          tx.update(washerRef, { status: "busy" });
-        }
-
-        if (dryerRef && serviceType === "dry") {
-          tx.update(dryerRef, { status: "busy" });
-        }
+        if (washerRef) tx.update(washerRef, { status: "busy" });
+        if (dryerRef && serviceType === "dry") tx.update(dryerRef, { status: "busy" });
 
         walletAfter = wallet - grandTotal;
         tx.update(customerRef, { wallet_balance: walletAfter });
+        tx.update(storeRef, { wallet_balance: FieldValue.increment(grandTotal) });
       } else {
         walletAfter = wallet;
       }
@@ -658,11 +615,7 @@ router.put("/calculate/:id", async (req, res) => {
           : "ยอดเงินในกระเป๋าของคุณไม่พอชำระ กรุณาเติมเงิน";
 
         await NotificationService.sendToUser(
-          customerId,
-          "customer",
-          "พนักงานซักอบคำนวณราคาเรียบร้อยแล้ว",
-          message,
-          { order_id: orderId, status: finalStatus }
+          customerId, "customer", "พนักงานซักอบคำนวณราคาเรียบร้อยแล้ว", message, orderId
         );
       } catch (error) {
         console.error("send notification error:", error);
@@ -672,6 +625,7 @@ router.put("/calculate/:id", async (req, res) => {
     return res.status(200).json({
       ok: true,
       paid,
+      status: finalStatus,
       message: paid
         ? "ชำระเงินแล้ว คำนวณราคาสำเร็จ เริ่มดำเนินการได้เลย"
         : "คำนวณราคาสำเร็จ แต่ยอดเงินในกระเป๋าไม่พอชำระ กรุณาเติมเงิน",
@@ -681,6 +635,7 @@ router.put("/calculate/:id", async (req, res) => {
         delivery_price: deliveryFee,
         total_amount: grandTotal,
         wallet_balance_after: walletAfter,
+        store_wallet_added: paid ? grandTotal : 0,
       },
     });
   } catch (err: any) {

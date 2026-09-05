@@ -108,12 +108,7 @@ exports.router.post("/create", async (req, res) => {
         };
         await orderRef.set(newOrder);
         try {
-            await notification_1.NotificationService.sendToUser(store_id, "store", "มีออเดอร์ใหม่", "มีลูกค้าสร้างออเดอร์ใหม่ กรุณาตรวจสอบและยืนยันออเดอร์", {
-                order_id: orderRef.id,
-                customer_id,
-                status: "pending_confirmation",
-                type: "new_order"
-            });
+            await notification_1.NotificationService.sendToUser(store_id, "store", "มีออเดอร์ใหม่", "มีลูกค้าสร้างออเดอร์ใหม่ กรุณาตรวจสอบและยืนยันออเดอร์", orderRef.id);
         }
         catch (e) {
             console.error("Send new order notification to store error:", e);
@@ -177,28 +172,20 @@ exports.router.put("/cancel/:id", async (req, res) => {
                 message: `ยังไม่สามารถยกเลิกได้ กรุณารออีกประมาณ ${remainingMinutes} นาที`,
             });
         }
-        await orderRef.update({
+        const updatedata = {
             status: "cancelled",
-            cancelled_at: firestore_1.Timestamp.now(),
-        });
+            order_datetime: firestore_1.Timestamp.now(),
+        };
+        await orderRef.update(updatedata);
         const targetStoreId = orderData.store_id?.id;
         if (targetStoreId) {
             try {
-                await notification_1.NotificationService.sendToUser(targetStoreId, "store", "ลูกค้ายกเลิกออเดอร์", "ลูกค้าได้ยกเลิกออเดอร์ กรุณาตรวจสอบรายละเอียด", {
-                    order_id: orderId,
-                    customer_id: customerId,
-                    status: "cancelled",
-                    type: "order_cancelled"
-                });
+                await notification_1.NotificationService.sendToUser(targetStoreId, "store", "ลูกค้ายกเลิกออเดอร์", "ลูกค้าได้ยกเลิกออเดอร์ กรุณาตรวจสอบรายละเอียด", orderId);
             }
             catch (e) {
                 console.error("Send cancel notification to store error:", e);
             }
         }
-        return res.status(200).json({
-            ok: true,
-            message: "ยกเลิกออเดอร์สำเร็จ",
-        });
         return res.status(200).json({
             ok: true,
             message: "ยกเลิกออเดอร์สำเร็จ",
@@ -237,10 +224,7 @@ exports.router.post("/store/accept/:id", async (req, res) => {
         };
         await orderRef.update(updteData);
         if (Storedata?.customer_id) {
-            await notification_1.NotificationService.sendToUser(Storedata.customer_id.id, "customer", "ร้านยืนยันออเดอร์แล้ว", "ร้านยืนยันออเดอร์ของคุณแล้ว กำลังรอไรเดอร์มารับผ้า", {
-                order_id: orderId,
-                status: "waiting_pickup"
-            });
+            await notification_1.NotificationService.sendToUser(Storedata.customer_id.id, "customer", "ร้านยืนยันออเดอร์แล้ว", "ร้านยืนยันออเดอร์ของคุณแล้ว กำลังรอไรเดอร์มารับผ้า", orderId);
         }
         return res.status(200).json({
             ok: true,
@@ -267,11 +251,11 @@ exports.router.post("/store/cancel/:id", async (req, res) => {
         if (store_id && data.store_id?.id !== store_id) {
             return res.status(403).json({ ok: false, message: "ออเดอร์นี้ไม่ใช่ของร้านค้านี้" });
         }
-        await orderRef.update({
+        const updatedata = {
             status: "cancelled",
-            cancel_reason: reason ?? null,
-            cancelled_at: firestore_1.FieldValue.serverTimestamp(),
-        });
+            order_datetime: firestore_1.Timestamp.now(),
+        };
+        await orderRef.update(updatedata);
         return res.status(200).json({
             ok: true,
             message: "ยกเลิกออเดอร์สำเร็จ",
@@ -326,15 +310,10 @@ exports.router.get("/store/detail/:id", async (req, res) => {
 exports.router.get("/customer/list/:id", async (req, res) => {
     try {
         const customerId = req.params.id;
-        const customerRef = firebase_1.db
-            .collection("customers")
-            .doc(customerId);
+        const customerRef = firebase_1.db.collection("customers").doc(customerId);
         const customerSnap = await customerRef.get();
         if (!customerSnap.exists) {
-            return res.status(404).json({
-                ok: false,
-                message: "ไม่พบลูกค้า",
-            });
+            return res.status(404).json({ ok: false, message: "ไม่พบลูกค้า" });
         }
         const customerData = customerSnap.data();
         const orderSnap = await firebase_1.db
@@ -346,42 +325,30 @@ exports.router.get("/customer/list/:id", async (req, res) => {
             return res.status(200).json({
                 ok: true,
                 data: [],
+                summary: { total: 0, success_count: 0, cancelled_count: 0, by_status: {} },
             });
         }
-        const addressIds = [
-            ...new Set(orderSnap.docs
-                .map((doc) => {
-                const data = doc.data();
-                return data.address_id?.id;
-            })
-                .filter((id) => Boolean(id))),
-        ];
+        const addressIds = Array.from(new Set(orderSnap.docs
+            .map((doc) => doc.data().address_id?.id)
+            .filter((id) => Boolean(id))));
         const addressRefs = addressIds.map((id) => firebase_1.db.collection("customer_addresses").doc(id));
-        const addressSnaps = addressRefs.length > 0
-            ? await firebase_1.db.getAll(...addressRefs)
-            : [];
+        const addressSnaps = addressRefs.length > 0 ? await firebase_1.db.getAll(...addressRefs) : [];
         const addressMap = new Map();
-        addressSnaps.forEach((addressSnap) => {
-            if (addressSnap.exists) {
-                addressMap.set(addressSnap.id, addressSnap.data());
-            }
+        addressSnaps.forEach((snap) => {
+            if (snap.exists)
+                addressMap.set(snap.id, snap.data());
         });
         const reviewRefs = orderSnap.docs.map((doc) => firebase_1.db.collection("reviews").doc(doc.id));
-        const reviewSnaps = reviewRefs.length > 0
-            ? await firebase_1.db.getAll(...reviewRefs)
-            : [];
+        const reviewSnaps = reviewRefs.length > 0 ? await Promise.all(reviewRefs.map((ref) => ref.get())) : [];
         const reviewMap = new Map();
-        reviewSnaps.forEach((reviewSnap) => {
-            if (reviewSnap.exists) {
-                reviewMap.set(reviewSnap.id, reviewSnap.data());
-            }
+        reviewSnaps.forEach((snap) => {
+            if (snap.exists)
+                reviewMap.set(snap.id, snap.data());
         });
         const data = orderSnap.docs.map((doc) => {
             const order = doc.data();
             const addressId = order.address_id?.id ?? null;
-            const addressData = addressId
-                ? addressMap.get(addressId) ?? null
-                : null;
+            const addressData = addressId ? addressMap.get(addressId) ?? null : null;
             const reviewData = reviewMap.get(doc.id) ?? null;
             return {
                 order_id: doc.id,
@@ -407,9 +374,7 @@ exports.router.get("/customer/list/:id", async (req, res) => {
                 note: order.note ?? null,
                 status: order.status,
                 order_datetime: order.order_datetime
-                    ? {
-                        _seconds: order.order_datetime.seconds,
-                    }
+                    ? { _seconds: order.order_datetime.seconds }
                     : null,
                 customer_fullname: customerData.fullname ?? "-",
                 customer_phone: customerData.phone ?? "-",
@@ -417,17 +382,22 @@ exports.router.get("/customer/list/:id", async (req, res) => {
                 is_reviewed: reviewData !== null,
             };
         });
-        return res.status(200).json({
-            ok: true,
-            data,
-        });
+        const byStatus = data.reduce((acc, o) => {
+            const key = o.status ?? "unknown";
+            acc[key] = (acc[key] ?? 0) + 1;
+            return acc;
+        }, {});
+        const summary = {
+            total: data.length,
+            success_count: byStatus["completed"] ?? 0,
+            cancelled_count: byStatus["cancelled"] ?? 0,
+            by_status: byStatus,
+        };
+        return res.status(200).json({ ok: true, data, summary });
     }
     catch (error) {
         console.error("Error fetching customer order list:", error);
-        return res.status(500).json({
-            ok: false,
-            message: "Server error",
-        });
+        return res.status(500).json({ ok: false, message: "Server error" });
     }
 });
 exports.router.get("/customer/completed/:id", async (req, res) => {
@@ -742,9 +712,6 @@ exports.router.get("/store/history/:id", async (req, res) => {
                 message: "ไม่พบร้านค้า",
             });
         }
-        // =========================
-        // Status filter
-        // =========================
         const allowedStatuses = ["completed", "cancelled"];
         const statusFilter = status && allowedStatuses.includes(status)
             ? [status]
@@ -753,9 +720,6 @@ exports.router.get("/store/history/:id", async (req, res) => {
             .collection("orders")
             .where("store_id", "==", storeRef)
             .where("status", "in", statusFilter);
-        // =========================
-        // Filter วัน เดือน ปี
-        // =========================
         if (day || month || year) {
             if (!day || !month || !year) {
                 return res.status(400).json({
@@ -782,7 +746,6 @@ exports.router.get("/store/history/:id", async (req, res) => {
                 `${String(monthNumber).padStart(2, "0")}-` +
                 `${String(dayNumber).padStart(2, "0")}`;
             const selectedDate = dayjs_1.default.tz(`${dateString} 00:00:00`, "YYYY-MM-DD HH:mm:ss", TZ);
-            // เช็กวันที่ เช่น 31/02
             if (!selectedDate.isValid() ||
                 selectedDate.format("YYYY-MM-DD") !== dateString) {
                 return res.status(400).json({
@@ -791,8 +754,6 @@ exports.router.get("/store/history/:id", async (req, res) => {
                 });
             }
             const startDate = selectedDate.startOf("day");
-            // ใช้วันถัดไป 00:00 แล้ว query <
-            // จะปลอดภัยกว่า endOf("day")
             const endDate = startDate.add(1, "day");
             query = query
                 .where("order_datetime", ">=", firestore_1.Timestamp.fromDate(startDate.toDate()))
@@ -806,25 +767,16 @@ exports.router.get("/store/history/:id", async (req, res) => {
                 data: [],
             });
         }
-        // =========================
-        // Customer IDs
-        // =========================
         const customerIds = [
             ...new Set(snap.docs
                 .map((doc) => doc.data().customer_id?.id)
                 .filter(Boolean)),
         ];
-        // =========================
-        // Address IDs
-        // =========================
         const addressIds = [
             ...new Set(snap.docs
                 .map((doc) => doc.data().address_id?.id)
                 .filter(Boolean)),
         ];
-        // =========================
-        // Customers
-        // =========================
         const customerMap = new Map();
         if (customerIds.length > 0) {
             const customerSnaps = await Promise.all(customerIds.map((id) => firebase_1.db.collection("customers").doc(id).get()));
@@ -834,9 +786,6 @@ exports.router.get("/store/history/:id", async (req, res) => {
                 }
             });
         }
-        // =========================
-        // Addresses
-        // =========================
         const addressMap = new Map();
         if (addressIds.length > 0) {
             const addressSnaps = await Promise.all(addressIds.map((id) => firebase_1.db.collection("customer_addresses").doc(id).get()));
@@ -846,9 +795,6 @@ exports.router.get("/store/history/:id", async (req, res) => {
                 }
             });
         }
-        // =========================
-        // Response data
-        // =========================
         const data = snap.docs.map((doc) => {
             const d = doc.data();
             const customerId = d.customer_id?.id ?? null;

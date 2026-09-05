@@ -73,10 +73,7 @@ exports.router.put("/start_wash/:id", async (req, res) => {
                 const isDry = currentStatus === "waiting_dry";
                 await notification_1.NotificationService.sendToUser(customerId, "customer", "พนักงานซักอบรับงานแล้ว", isDry
                     ? "พนักงานซักอบกำลังดำเนินการอบผ้าให้คุณ"
-                    : "พนักงานซักอบกำลังดำเนินการซักผ้าให้คุณ", {
-                    order_id,
-                    status: currentStatus,
-                });
+                    : "พนักงานซักอบกำลังดำเนินการซักผ้าให้คุณ", order_id);
             }
             catch (error) {
                 console.error("send notification error:", error);
@@ -295,16 +292,10 @@ exports.router.put("/update/status/:id", async (req, res) => {
         if (customerId) {
             try {
                 if (updatedStatus === "drying") {
-                    await notification_1.NotificationService.sendToUser(customerId, "customer", "พนักงานกำลังอบผ้าให้คุณ", "", {
-                        order_id: orderId,
-                        status: updatedStatus,
-                    });
+                    await notification_1.NotificationService.sendToUser(customerId, "customer", "พนักงานกำลังอบผ้าให้คุณ", "", orderId);
                 }
                 if (updatedStatus === "waiting_delivery") {
-                    await notification_1.NotificationService.sendToUser(customerId, "customer", "พนักงานซักอบซักผ้าเสร็จแล้ว", "พนักงานซักอบกำลังเตรียมส่งผ้าให้คุณ", {
-                        order_id: orderId,
-                        status: updatedStatus,
-                    });
+                    await notification_1.NotificationService.sendToUser(customerId, "customer", "พนักงานซักอบซักผ้าเสร็จแล้ว", "พนักงานซักอบกำลังเตรียมส่งผ้าให้คุณ", orderId);
                 }
             }
             catch (error) {
@@ -338,10 +329,7 @@ exports.router.put("/calculate/:id", async (req, res) => {
         const orderId = req.params.id;
         const { staff_id: staffId, weight, washer_id: washerId, dryer_id: dryerId } = req.body;
         if (!staffId || !Number.isFinite(weight) || weight <= 0) {
-            return res.status(400).json({
-                ok: false,
-                message: "กรุณาระบุ staff_id และน้ำหนักให้ถูกต้อง",
-            });
+            return res.status(400).json({ ok: false, message: "กรุณาระบุ staff_id และน้ำหนักให้ถูกต้อง" });
         }
         const orderRef = firebase_1.db.collection("orders").doc(orderId);
         const orderSnap = await orderRef.get();
@@ -350,17 +338,11 @@ exports.router.put("/calculate/:id", async (req, res) => {
         }
         const order = orderSnap.data();
         if (order.staff_id?.id !== staffId) {
-            return res.status(403).json({
-                ok: false,
-                message: "คุณไม่ใช่ staff ที่รับงานนี้",
-            });
+            return res.status(403).json({ ok: false, message: "คุณไม่ใช่ staff ที่รับงานนี้" });
         }
         const allowedStatuses = ["waiting_wash", "waiting_dry", "waiting_payment"];
         if (!allowedStatuses.includes(order.status)) {
-            return res.status(409).json({
-                ok: false,
-                message: "สถานะออเดอร์ไม่รองรับการคำนวณราคา",
-            });
+            return res.status(409).json({ ok: false, message: "สถานะออเดอร์ไม่รองรับการคำนวณราคา" });
         }
         if (!order.store_id || !order.customer_id) {
             return res.status(404).json({
@@ -373,7 +355,7 @@ exports.router.put("/calculate/:id", async (req, res) => {
             return res.status(404).json({ ok: false, message: "ไม่พบร้านค้า" });
         }
         const storeData = storeSnap.data();
-        const detergentPrice = storeData.detergent_price ?? 0;
+        const detergentPrice = Number(storeData.detergent_price ?? 0);
         const serviceType = order.service_type;
         const detergentOption = order.detergent_option;
         const needsWasher = serviceType === "wash" || serviceType === "wash_dry";
@@ -395,42 +377,36 @@ exports.router.put("/calculate/:id", async (req, res) => {
         const washer = washerSnap?.exists ? washerSnap.data() : null;
         const dryer = dryerSnap?.exists ? dryerSnap.data() : null;
         if (needsWasher) {
-            if (!washer) {
+            if (!washer)
                 return res.status(404).json({ ok: false, message: "ไม่พบเครื่องซัก" });
-            }
-            if (washer.status !== "available") {
+            if (washer.status !== "available")
                 return res.status(422).json({ ok: false, message: "เครื่องซักไม่ว่าง" });
-            }
-            if (washer.capacity < weight) {
+            if (washer.capacity < weight)
                 return res.status(422).json({ ok: false, message: "เครื่องซักรับน้ำหนักไม่พอ" });
-            }
         }
         if (needsDryer) {
-            if (!dryer) {
+            if (!dryer)
                 return res.status(404).json({ ok: false, message: "ไม่พบเครื่องอบ" });
-            }
-            if (dryer.status !== "available") {
+            if (dryer.status !== "available")
                 return res.status(422).json({ ok: false, message: "เครื่องอบไม่ว่าง" });
-            }
-            if (dryer.capacity < weight) {
+            if (dryer.capacity < weight)
                 return res.status(422).json({ ok: false, message: "เครื่องอบรับน้ำหนักไม่พอ" });
-            }
         }
-        const servicePrice = (washer?.price ?? 0) + (dryer?.price ?? 0);
-        const detergentFee = needsWasher && detergentOption === "no_detergent"
-            ? detergentPrice
-            : 0;
-        const deliveryFee = order.delivery_price ?? 0;
+        const servicePrice = Number(washer?.price ?? 0) + Number(dryer?.price ?? 0);
+        const detergentFee = needsWasher && detergentOption === "no_detergent" ? detergentPrice : 0;
+        const deliveryFee = Number(order.delivery_price ?? 0);
         const grandTotal = servicePrice + detergentFee + deliveryFee;
+        if (!Number.isFinite(grandTotal) || grandTotal < 0) {
+            return res.status(400).json({ ok: false, message: "ยอดเงินไม่ถูกต้อง" });
+        }
         let paid = false;
         let walletAfter = 0;
         let finalStatus = order.status;
         let customerId = null;
         await firebase_1.db.runTransaction(async (tx) => {
             const freshOrderSnap = await tx.get(orderRef);
-            if (!freshOrderSnap.exists) {
+            if (!freshOrderSnap.exists)
                 throw { code: 404, message: "ไม่พบออเดอร์" };
-            }
             const freshOrder = freshOrderSnap.data();
             if (freshOrder.staff_id?.id !== staffId) {
                 throw { code: 403, message: "คุณไม่ใช่ staff ที่รับงานนี้" };
@@ -439,18 +415,22 @@ exports.router.put("/calculate/:id", async (req, res) => {
                 throw { code: 409, message: "สถานะออเดอร์เปลี่ยนไปแล้ว กรุณาลองใหม่" };
             }
             const customerRef = freshOrder.customer_id;
-            if (!customerRef) {
+            const storeRef = freshOrder.store_id;
+            if (!customerRef)
                 throw { code: 404, message: "ไม่พบ customer" };
-            }
-            const [customerSnap, freshWasherSnap, freshDryerSnap] = await Promise.all([
+            if (!storeRef)
+                throw { code: 404, message: "ไม่พบร้านค้า" };
+            const [customerSnap, freshStoreSnap, freshWasherSnap, freshDryerSnap] = await Promise.all([
                 tx.get(customerRef),
+                tx.get(storeRef),
                 washerRef ? tx.get(washerRef) : null,
                 dryerRef ? tx.get(dryerRef) : null,
             ]);
-            if (!customerSnap.exists) {
+            if (!customerSnap.exists)
                 throw { code: 404, message: "ไม่พบ customer" };
-            }
-            const wallet = customerSnap.data()?.wallet_balance ?? 0;
+            if (!freshStoreSnap.exists)
+                throw { code: 404, message: "ไม่พบร้านค้า" };
+            const wallet = Number(customerSnap.data()?.wallet_balance ?? 0);
             const canPayNow = wallet >= grandTotal;
             const nextStatus = canPayNow
                 ? serviceType === "dry" ? "drying" : "washing"
@@ -474,14 +454,13 @@ exports.router.put("/calculate/:id", async (req, res) => {
             }
             tx.update(orderRef, updateData);
             if (canPayNow) {
-                if (washerRef) {
+                if (washerRef)
                     tx.update(washerRef, { status: "busy" });
-                }
-                if (dryerRef && serviceType === "dry") {
+                if (dryerRef && serviceType === "dry")
                     tx.update(dryerRef, { status: "busy" });
-                }
                 walletAfter = wallet - grandTotal;
                 tx.update(customerRef, { wallet_balance: walletAfter });
+                tx.update(storeRef, { wallet_balance: firestore_1.FieldValue.increment(grandTotal) });
             }
             else {
                 walletAfter = wallet;
@@ -497,7 +476,7 @@ exports.router.put("/calculate/:id", async (req, res) => {
                         ? "ชำระเงินเรียบร้อยแล้ว พนักงานซักอบกำลังดำเนินการอบผ้าให้คุณ"
                         : "ชำระเงินเรียบร้อยแล้ว พนักงานซักอบกำลังดำเนินการซักผ้าให้คุณ"
                     : "ยอดเงินในกระเป๋าของคุณไม่พอชำระ กรุณาเติมเงิน";
-                await notification_1.NotificationService.sendToUser(customerId, "customer", "พนักงานซักอบคำนวณราคาเรียบร้อยแล้ว", message, { order_id: orderId, status: finalStatus });
+                await notification_1.NotificationService.sendToUser(customerId, "customer", "พนักงานซักอบคำนวณราคาเรียบร้อยแล้ว", message, orderId);
             }
             catch (error) {
                 console.error("send notification error:", error);
@@ -506,6 +485,7 @@ exports.router.put("/calculate/:id", async (req, res) => {
         return res.status(200).json({
             ok: true,
             paid,
+            status: finalStatus,
             message: paid
                 ? "ชำระเงินแล้ว คำนวณราคาสำเร็จ เริ่มดำเนินการได้เลย"
                 : "คำนวณราคาสำเร็จ แต่ยอดเงินในกระเป๋าไม่พอชำระ กรุณาเติมเงิน",
@@ -515,6 +495,7 @@ exports.router.put("/calculate/:id", async (req, res) => {
                 delivery_price: deliveryFee,
                 total_amount: grandTotal,
                 wallet_balance_after: walletAfter,
+                store_wallet_added: paid ? grandTotal : 0,
             },
         });
     }

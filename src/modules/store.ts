@@ -1,5 +1,5 @@
 
-export type StoreStatus = "OPEN" | "TEMP_CLOSED";
+export type StoreStatus = "OPEN" | "TEMP_CLOSED" | "PENDING";
 
 export const StoreStatus: StoreStatus[] = [
   "OPEN",

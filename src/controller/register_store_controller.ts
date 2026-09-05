@@ -60,7 +60,7 @@ router.post("/signup", async (req, res) => {
       opening_hours: '',
       closed_hours: '',
 detergent_price: 0,
-      status: "TEMP_CLOSED",
+      status: "PENDING",
       service_radius: 0,
       is_hiring: false,
       latitude: 0,

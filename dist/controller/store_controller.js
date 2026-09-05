@@ -23,6 +23,7 @@ exports.router.put("/profile/:id", upload_1.upload.single("profile_image"), asyn
                 message: "ไม่พบร้านค้า"
             });
         }
+        const currentStatus = exist.data()?.status;
         const { store_name, email, phone, address, opening_hours, closed_hours, service_radius, latitude, longitude, facebook, line_id, status, delivery_min, delivery_max, detergent_price } = req.body;
         const emailNorm = email?.trim().toLowerCase() || "";
         if (email !== undefined) {
@@ -60,8 +61,12 @@ exports.router.put("/profile/:id", upload_1.upload.single("profile_image"), asyn
             update.facebook = facebook || null;
         if (line_id !== undefined)
             update.line_id = line_id || null;
-        if (status !== undefined)
+        if (status !== undefined) {
             update.status = status;
+        }
+        else if (currentStatus === "PENDING") {
+            update.status = "TEMP_CLOSED";
+        }
         if (detergent_price !== undefined) {
             const detergent = Number(detergent_price);
             if (!isNaN(detergent))
@@ -127,7 +132,7 @@ exports.router.put("/profile/:id", upload_1.upload.single("profile_image"), asyn
                 service_radius: Number(data.service_radius ?? 0),
                 latitude: Number(data.latitude ?? 0),
                 longitude: Number(data.longitude ?? 0),
-                status: data.status ?? "เปิดร้าน",
+                status: data.status ?? "OPEN",
                 profile_image: data.profile_image ?? "",
                 wallet_balance: Number(data.wallet_balance ?? 0),
                 delivery_min: Number(data.delivery_min ?? 0),
@@ -172,7 +177,7 @@ exports.router.get("/profile/:id", async (req, res) => {
                 service_radius: Number(data.service_radius ?? 0),
                 latitude: Number(data.latitude ?? 0),
                 longitude: Number(data.longitude ?? 0),
-                status: data.status ?? "เปิดร้าน",
+                status: data.status ?? "OPEN",
                 profile_image: data.profile_image ?? "",
                 wallet_balance: Number(data.wallet_balance ?? 0),
                 delivery_min: Number(data.delivery_min ?? 0),
@@ -232,11 +237,12 @@ exports.router.get("/customer/profile/:id", async (req, res) => {
                 service_radius: Number(data.service_radius ?? 0),
                 latitude: Number(data.latitude ?? 0),
                 longitude: Number(data.longitude ?? 0),
-                status: data.status ?? "เปิดร้าน",
+                status: data.status ?? "OPEN",
                 profile_image: data.profile_image ?? "",
                 wallet_balance: Number(data.wallet_balance ?? 0),
                 machine_wash_count: machinewashcount,
                 machine_dry_count: machinedrycount,
+                detergent_price: data.detergent_price ?? 0
             },
         });
     }
