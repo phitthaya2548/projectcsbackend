@@ -89,11 +89,13 @@ router.post("/forgot_password", async (req, res) => {
     const resetRef = db.collection("password_resets").doc();
     await resetRef.set(resetData);
 
-    // แก้: await ให้ส่งเมลเสร็จ (หรือ fail ชัดเจน) ก่อนตอบ response
-    // เดิมใช้ .catch() แบบ fire-and-forget ทำให้บน serverless
-    // instance ถูก freeze ก่อนอีเมลจะถูกส่งจริง
-    try {
-      await mailer.sendMail({
+    res.json({
+      ok: true,
+      message: "หากอีเมลนี้มีอยู่ในระบบ จะมี OTP ถูกส่งไป",
+    });
+
+    mailer
+      .sendMail({
         from: `"WashAndDry Support" <${process.env.MAIL_FROM}>`,
         to: email,
         subject: "รหัส OTP สำหรับรีเซ็ตรหัสผ่าน",
@@ -106,23 +108,12 @@ router.post("/forgot_password", async (req, res) => {
       <p>OTP นี้จะหมดอายุใน 5 นาที</p>
     </div>
   `,
+      })
+      .catch((err) => {
+        console.error("send mail failed:", err);
       });
-    } catch (mailErr) {
-      console.error("send mail failed:", mailErr);
 
-      // ส่งเมลไม่สำเร็จ ลบ reset doc ทิ้ง เพราะผู้ใช้จะไม่มี OTP ให้ verify อยู่ดี
-      await resetRef.delete().catch(() => {});
-
-      return res.status(500).json({
-        ok: false,
-        message: "ไม่สามารถส่ง OTP ได้ กรุณาลองใหม่อีกครั้ง",
-      });
-    }
-
-    return res.json({
-      ok: true,
-      message: "หากอีเมลนี้มีอยู่ในระบบ จะมี OTP ถูกส่งไป",
-    });
+    return;
   } catch (e) {
     console.error("forgot-password error:", e);
     return res.status(500).json({
