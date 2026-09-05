@@ -27,6 +27,16 @@ export const mailer = nodemailer.createTransport({
   port: Number(SMTP_PORT),
   secure: Number(SMTP_PORT) === 465,
   family: 4,
+
+
+ lookup: (
+  hostname: string,
+  options: dns.LookupOneOptions,
+  callback: (err: NodeJS.ErrnoException | null, address: string, family: number) => void
+) => {
+  dns.lookup(hostname, { family: 4 }, callback);
+},
+
   connectionTimeout: 15000,
   greetingTimeout: 10000,
   socketTimeout: 15000,

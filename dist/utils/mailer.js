@@ -25,6 +25,9 @@ exports.mailer = nodemailer_1.default.createTransport({
     port: Number(SMTP_PORT),
     secure: Number(SMTP_PORT) === 465,
     family: 4,
+    lookup: (hostname, options, callback) => {
+        dns_1.default.lookup(hostname, { family: 4 }, callback);
+    },
     connectionTimeout: 15000,
     greetingTimeout: 10000,
     socketTimeout: 15000,
