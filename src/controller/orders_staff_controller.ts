@@ -895,15 +895,13 @@ router.get("/detail/:id", async (req, res) => {
 
     const orderData = orderSnap.data() as Order;
 
-    const [customerSnap, addressSnap, riderPickupSnap] = await Promise.all([
+    const [customerSnap, addressSnap] = await Promise.all([
       orderData.customer_id?.get() ?? null,
       orderData.address_id?.get() ?? null,
-      orderData.rider_pickup_id?.get() ?? null,
     ]);
 
     const customerData = customerSnap?.exists ? customerSnap.data() as CustomerData : null;
     const addressData = addressSnap?.exists ? addressSnap.data() as CustomerAddress : null;
-    const riderPickupData = riderPickupSnap?.exists ? riderPickupSnap.data() as Rider : null;
 
     const customer = customerData && customerSnap ? {
       customer_id: customerSnap.id,
@@ -915,14 +913,6 @@ router.get("/detail/:id", async (req, res) => {
 
     const address = addressData ? {
       address_text: addressData.address_text ?? null,
-    } : null;
-
-    const riderPickup = riderPickupData ? {
-      fullname: riderPickupData.fullname ?? null,
-      phone: riderPickupData.phone ?? null,
-      vehicle_type: riderPickupData.vehicle_type ?? null,
-      license_plate: riderPickupData.license_plate ?? null,
-      profile_image: riderPickupData.profile_image ?? null,
     } : null;
 
     const orderDatetime = orderData.order_datetime
@@ -952,14 +942,12 @@ router.get("/detail/:id", async (req, res) => {
         detergent_option: orderData.detergent_option ?? null,
 
         before_wash_image: orderData.before_wash_image ?? null,
-        after_wash_image: orderData.after_wash_image ?? null,
         note: orderData.note ?? null,
         status: orderData.status ?? null,
         order_datetime: orderDatetime,
 
         customer,
         address,
-        rider_pickup: riderPickup,
       },
     });
   } catch (error) {

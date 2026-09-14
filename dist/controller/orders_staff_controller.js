@@ -700,14 +700,12 @@ exports.router.get("/detail/:id", async (req, res) => {
             return res.status(404).json({ ok: false, message: "ไม่พบคำสั่งซื้อ" });
         }
         const orderData = orderSnap.data();
-        const [customerSnap, addressSnap, riderPickupSnap] = await Promise.all([
+        const [customerSnap, addressSnap] = await Promise.all([
             orderData.customer_id?.get() ?? null,
             orderData.address_id?.get() ?? null,
-            orderData.rider_pickup_id?.get() ?? null,
         ]);
         const customerData = customerSnap?.exists ? customerSnap.data() : null;
         const addressData = addressSnap?.exists ? addressSnap.data() : null;
-        const riderPickupData = riderPickupSnap?.exists ? riderPickupSnap.data() : null;
         const customer = customerData && customerSnap ? {
             customer_id: customerSnap.id,
             username: customerData.username ?? null,
@@ -717,13 +715,6 @@ exports.router.get("/detail/:id", async (req, res) => {
         } : null;
         const address = addressData ? {
             address_text: addressData.address_text ?? null,
-        } : null;
-        const riderPickup = riderPickupData ? {
-            fullname: riderPickupData.fullname ?? null,
-            phone: riderPickupData.phone ?? null,
-            vehicle_type: riderPickupData.vehicle_type ?? null,
-            license_plate: riderPickupData.license_plate ?? null,
-            profile_image: riderPickupData.profile_image ?? null,
         } : null;
         const orderDatetime = orderData.order_datetime
             ? typeof orderData.order_datetime.toDate === "function"
@@ -749,13 +740,11 @@ exports.router.get("/detail/:id", async (req, res) => {
                 detergent_price: orderData.detergent_price ?? null,
                 detergent_option: orderData.detergent_option ?? null,
                 before_wash_image: orderData.before_wash_image ?? null,
-                after_wash_image: orderData.after_wash_image ?? null,
                 note: orderData.note ?? null,
                 status: orderData.status ?? null,
                 order_datetime: orderDatetime,
                 customer,
                 address,
-                rider_pickup: riderPickup,
             },
         });
     }

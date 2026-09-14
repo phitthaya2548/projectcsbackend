@@ -449,24 +449,12 @@ exports.router.get("/detail/:id", async (req, res) => {
         const orderData = orderSnap.data();
         const customerRef = orderData.customer_id ?? null;
         const addressRef = orderData.address_id ?? null;
-        const staffRef = orderData.staff_id ?? null;
-        const riderPickupRef = orderData.rider_pickup_id ?? null;
-        const riderDeliveryRef = orderData.rider_delivery_id ?? null;
-        const [customerSnap, addressSnap, staffSnap, riderPickupSnap, riderDeliverySnap,] = await Promise.all([
+        const [customerSnap, addressSnap,] = await Promise.all([
             customerRef
                 ? customerRef.get()
                 : Promise.resolve(null),
             addressRef
                 ? addressRef.get()
-                : Promise.resolve(null),
-            staffRef
-                ? staffRef.get()
-                : Promise.resolve(null),
-            riderPickupRef
-                ? riderPickupRef.get()
-                : Promise.resolve(null),
-            riderDeliveryRef
-                ? riderDeliveryRef.get()
                 : Promise.resolve(null),
         ]);
         let customer = null;
@@ -491,46 +479,10 @@ exports.router.get("/detail/:id", async (req, res) => {
                 longitude: addressData.longitude ?? null,
             };
         }
-        let staff = null;
-        if (staffSnap &&
-            staffSnap.exists) {
-            const staffData = staffSnap.data();
-            staff = {
-                fullname: staffData.fullname ?? null,
-                phone: staffData.phone ?? null,
-                profile_image: staffData.profile_image ?? null,
-            };
-        }
-        let rider_pickup = null;
-        if (riderPickupSnap &&
-            riderPickupSnap.exists) {
-            const riderPickupData = riderPickupSnap.data();
-            rider_pickup = {
-                fullname: riderPickupData.fullname ?? null,
-                phone: riderPickupData.phone ?? null,
-                vehicle_type: riderPickupData.vehicle_type ?? null,
-                license_plate: riderPickupData.license_plate ?? null,
-                profile_image: riderPickupData.profile_image ?? null,
-            };
-        }
-        let rider_delivery = null;
-        if (riderDeliverySnap &&
-            riderDeliverySnap.exists) {
-            const riderDeliveryData = riderDeliverySnap.data();
-            rider_delivery = {
-                fullname: riderDeliveryData.fullname ?? null,
-                phone: riderDeliveryData.phone ?? null,
-                vehicle_type: riderDeliveryData.vehicle_type ?? null,
-                license_plate: riderDeliveryData.license_plate ?? null,
-                profile_image: riderDeliveryData.profile_image ?? null,
-            };
-        }
         let orderDatetime = null;
         if (orderData.order_datetime) {
-            orderDatetime =
-                orderData.order_datetime
-                    .toDate()
-                    .toISOString();
+            const dt = orderData.order_datetime.toDate();
+            orderDatetime = dt.toISOString();
         }
         return res.status(200).json({
             ok: true,
@@ -539,27 +491,15 @@ exports.router.get("/detail/:id", async (req, res) => {
                 customer_id: orderData.customer_id?.id ?? null,
                 address_id: orderData.address_id?.id ?? null,
                 store_id: orderData.store_id?.id ?? null,
-                rider_pickup_id: orderData.rider_pickup_id?.id ?? null,
-                rider_delivery_id: orderData.rider_delivery_id?.id ?? null,
-                machine_washer_id: orderData.machine_washer_id?.id ?? null,
-                machine_dryer_id: orderData.machine_dryer_id?.id ?? null,
-                staff_id: orderData.staff_id?.id ?? null,
                 service_type: orderData.service_type ?? null,
                 wash_dry_weight: orderData.wash_dry_weight ?? null,
                 service_price: orderData.service_price ?? null,
-                delivery_price: orderData.delivery_price ?? null,
-                detergent_price: orderData.detergent_price ?? null,
                 detergent_option: orderData.detergent_option ?? null,
-                before_wash_image: orderData.before_wash_image ?? null,
-                after_wash_image: orderData.after_wash_image ?? null,
                 note: orderData.note ?? null,
                 status: orderData.status ?? null,
                 order_datetime: orderDatetime,
                 customer: customer,
                 address: address,
-                staff: staff,
-                rider_pickup: rider_pickup,
-                rider_delivery: rider_delivery,
             },
         });
     }

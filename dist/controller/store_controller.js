@@ -232,17 +232,18 @@ exports.router.get("/customer/profile/:id", async (req, res) => {
                 facebook: data.facebook ?? "",
                 line_id: data.line_id ?? "",
                 address: data.address ?? "",
+                min_delivery: Number(data.delivery_min ?? 0),
+                max_delivery: Number(data.delivery_max ?? 0),
                 opening_hours: data.opening_hours ?? "",
                 closed_hours: data.closed_hours ?? "",
                 service_radius: Number(data.service_radius ?? 0),
+                detergent_price: Number(data.detergent_price ?? 0),
                 latitude: Number(data.latitude ?? 0),
                 longitude: Number(data.longitude ?? 0),
                 status: data.status ?? "OPEN",
                 profile_image: data.profile_image ?? "",
-                wallet_balance: Number(data.wallet_balance ?? 0),
                 machine_wash_count: machinewashcount,
                 machine_dry_count: machinedrycount,
-                detergent_price: data.detergent_price ?? 0
             },
         });
     }
