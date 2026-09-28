@@ -27,19 +27,7 @@ router.post("/signup", async (req, res) => {
     const u = username.trim();
 
     
-    const usernameChecks = await Promise.all([
-      db.collection("stores").where("username", "==", u).limit(1).get(),
-      db.collection("customers").where("username", "==", u).limit(1).get(),
-      db.collection("riders").where("username", "==", u).limit(1).get(),
-      db.collection("laundry_staff").where("username", "==", u).limit(1).get(),
-    ]);
-
-    if (usernameChecks.some(check => !check.empty)) {
-      return res.status(409).json({
-        ok: false,
-        message: "Username นี้ถูกใช้แล้ว"
-      });
-    }
+    
 
     const hashed = await bcrypt.hash(password, 12);
 

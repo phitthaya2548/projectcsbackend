@@ -12,6 +12,7 @@ export const router = Router();
 const isBlank = (v: any) => v == null || String(v).trim() === "";
 
 
+
 router.get("/stores/list", async (req, res) => {
   try {
     const search =
@@ -19,45 +20,23 @@ router.get("/stores/list", async (req, res) => {
         ? req.query.search.trim().toLowerCase()
         : "";
 
-    const storeSnap = await db
+    const snap = await db
       .collection("stores")
       .where("is_hiring", "==", true)
       .get();
 
-    if (storeSnap.empty) {
-      return res.json({
-        ok: true,
-        total: 0,
-        data: [],
-      });
-    }
-
-    const filteredStores = storeSnap.docs.filter((doc) => {
-      const store = doc.data() as StoreData;
-
+    const docs = snap.docs.filter((doc) => {
       if (!search) return true;
 
-      const storeName = String(
-        store.store_name ?? ""
-      ).toLowerCase();
+      const store = doc.data() as StoreData;
 
-      const address = String(
-        store.address ?? ""
-      ).toLowerCase();
-
-      const phone = String(
-        store.phone ?? ""
-      ).toLowerCase();
-
-      return (
-        storeName.includes(search) ||
-        address.includes(search) ||
-        phone.includes(search)
-      );
+      return [store.store_name, store.address, store.phone]
+        .map((value) => String(value ?? "").toLowerCase())
+        .some((value) => value.includes(search));
     });
 
-    const stores = await Promise.all(
-      filteredStores.map(async (doc) => {
+    const data = await Promise.all(
+      docs.map(async (doc) => {
         const store = doc.data() as StoreData;
 
         const reviewSnap = await db
@@ -69,7 +48,7 @@ router.get("/stores/list", async (req, res) => {
           })
           .get();
 
-        const reviewData = reviewSnap.data();
+        const review = reviewSnap.data();
 
         return {
           store_id: doc.id,
@@ -94,11 +73,9 @@ router.get("/stores/list", async (req, res) => {
           status: store.status ?? "TEMP_CLOSED",
           is_hiring: true,
 
-          total_reviews:
-            reviewData.total ?? 0,
-
+          total_reviews: review.total ?? 0,
           avg_rating: Number(
-            Number(reviewData.avg ?? 0).toFixed(1)
+            Number(review.avg ?? 0).toFixed(1)
           ),
         };
       })
@@ -106,22 +83,20 @@ router.get("/stores/list", async (req, res) => {
 
     return res.json({
       ok: true,
-      total: stores.length,
-      data: stores,
+      total: data.length,
+      data,
     });
-  } catch (error: any) {
-    console.error(
-      "GET STORES LIST ERROR:",
-      error
-    );
+  } catch (error) {
+    console.error("GET STORES LIST ERROR:", error);
 
     return res.status(500).json({
       ok: false,
       message: "Server error",
     });
   }
-}); 
+});
 
+// สมัครร้านค้าไรเดอร์
 router.put("/rider/store/:id", async (req, res) => {
   try {
     const riderId = req.params.id;
@@ -136,7 +111,6 @@ router.put("/rider/store/:id", async (req, res) => {
 
     const targetStoreId = String(store_id).trim();
 
-
     const riderRef = db.collection("riders").doc(riderId);
     const riderSnap = await riderRef.get();
 
@@ -147,12 +121,11 @@ router.put("/rider/store/:id", async (req, res) => {
       });
     }
 
-    const riderData = riderSnap.data();
+    const riderData = riderSnap.data() as Rider ?? {};
 
-    if (riderData?.store_id) {
+    if (riderData.store_id) {
       const currentStoreId = riderData.store_id.id;
 
- 
       if (
         riderData.status === "pending" &&
         currentStoreId === targetStoreId
@@ -171,17 +144,13 @@ router.put("/rider/store/:id", async (req, res) => {
         });
       }
 
-
       return res.status(409).json({
         ok: false,
         message: "คุณสังกัดร้านค้าอยู่แล้ว ไม่สามารถสมัครร้านใหม่ได้",
       });
     }
 
-    const storeRef = db
-      .collection("stores")
-      .doc(targetStoreId);
-
+    const storeRef = db.collection("stores").doc(targetStoreId);
     const storeSnap = await storeRef.get();
 
     if (!storeSnap.exists) {
@@ -191,22 +160,19 @@ router.put("/rider/store/:id", async (req, res) => {
       });
     }
 
-    const storeData = storeSnap.data();
+    const storeData = storeSnap.data() as StoreData?? {};
 
-
-    if (storeData?.is_hiring !== true) {
+    if (storeData.is_hiring !== true) {
       return res.status(400).json({
         ok: false,
         message: "ร้านนี้ปิดรับสมัครพนักงานอยู่ในขณะนี้",
       });
     }
 
-const updateData: Partial<Rider> = {
-  store_id: storeRef,
-  status: "pending",
-};
-
-await riderRef.update(updateData);
+    await riderRef.update({
+      store_id: storeRef,
+      status: "pending",
+    });
 
     return res.json({
       ok: true,
@@ -214,12 +180,12 @@ await riderRef.update(updateData);
       data: {
         rider_id: riderId,
         store_id: storeRef.id,
-        store_name: storeData?.store_name ?? "",
+        store_name: storeData.store_name ?? "",
         status: "pending",
       },
     });
-  } catch (e: any) {
-    console.error("RIDER LINK STORE ERROR:", e);
+  } catch (error) {
+    console.error("RIDER LINK STORE ERROR:", error);
 
     return res.status(500).json({
       ok: false,
@@ -227,6 +193,9 @@ await riderRef.update(updateData);
     });
   }
 });
+
+
+
 router.put("/staff/store/:id", async (req, res) => {
   try {
     const staffId = req.params.id;
@@ -338,14 +307,12 @@ router.put("/staff/store/:id", async (req, res) => {
     });
   }
 });
+
 router.get("/store/:id/applicants", async (req, res) => {
   try {
-    const storeId = req.params.id;
+    const storeRef = db.collection("stores").doc(req.params.id);
 
-    const storeRef = db.collection("stores").doc(storeId);
-    const storeSnap = await storeRef.get();
-
-    if (!storeSnap.exists) {
+    if (!(await storeRef.get()).exists) {
       return res.status(404).json({
         ok: false,
         message: "ไม่พบร้านค้า",
@@ -366,6 +333,14 @@ router.get("/store/:id/applicants", async (req, res) => {
         .get(),
     ]);
 
+    const formatDate = (date: any) =>
+      date
+        ? {
+            _seconds: date.seconds,
+            _nanoseconds: date.nanoseconds,
+          }
+        : null;
+
     const riders = ridersSnap.docs.map((doc) => {
       const data = doc.data();
 
@@ -377,12 +352,7 @@ router.get("/store/:id/applicants", async (req, res) => {
         profile_image: data.profile_image ?? "",
         vehicle_type: data.vehicle_type ?? "",
         license_plate: data.license_plate ?? "",
-        applied_at: data.updated_at
-          ? {
-              _seconds: data.updated_at.seconds,
-              _nanoseconds: data.updated_at.nanoseconds,
-            }
-          : null,
+        applied_at: formatDate(data.updated_at),
         role: "rider",
       };
     });
@@ -396,12 +366,7 @@ router.get("/store/:id/applicants", async (req, res) => {
         email: data.email ?? "",
         phone: data.phone ?? "",
         profile_image: data.profile_image ?? "",
-        applied_at: data.updated_at
-          ? {
-              _seconds: data.updated_at.seconds,
-              _nanoseconds: data.updated_at.nanoseconds,
-            }
-          : null,
+        applied_at: formatDate(data.updated_at),
         role: "laundry_staff",
       };
     });
@@ -414,50 +379,42 @@ router.get("/store/:id/applicants", async (req, res) => {
         total: riders.length + staff.length,
       },
     });
-  } catch (e: any) {
-    console.error("GET STORE APPLICANTS ERROR:", e);
+  } catch (error: any) {
+    console.error("GET STORE APPLICANTS ERROR:", error);
 
     return res.status(500).json({
       ok: false,
-      message: e.message ?? "Server error",
+      message: error.message ?? "Server error",
     });
   }
 });
 
+// อัปเดตสถานะผู้สมัคร (อนุมัติ/ปฏิเสธ)
 
 router.put("/store/:storeId/applicant/:userId/status", async (req, res) => {
   try {
-    const storeId = req.params.storeId;
-    const userId = req.params.userId;
-
+    const { storeId, userId } = req.params;
     const { role, action } = req.body;
 
-    if (role !== "rider" && role !== "laundry_staff") {
+    if (!["rider", "laundry_staff"].includes(role)) {
       return res.status(400).json({
         ok: false,
         message: "role ไม่ถูกต้อง",
       });
     }
 
-    if (action !== "approve" && action !== "reject") {
+    if (!["approve", "reject"].includes(action)) {
       return res.status(400).json({
         ok: false,
         message: "action ไม่ถูกต้อง",
       });
     }
 
-    let collectionName = "";
+    const collection = role === "rider"
+      ? "riders"
+      : "laundry_staff";
 
-    if (role === "rider") {
-      collectionName = "riders";
-    } else {
-      collectionName = "laundry_staff";
-    }
-
-    const userRef = db
-      .collection(collectionName)
-      .doc(userId);
-
+    const userRef = db.collection(collection).doc(userId);
     const userSnap = await userRef.get();
 
     if (!userSnap.exists) {
@@ -476,45 +433,37 @@ router.put("/store/:storeId/applicant/:userId/status", async (req, res) => {
       });
     }
 
-    if (userData?.status !== "pending") {
+    if (userData.status !== "pending") {
       return res.status(400).json({
         ok: false,
         message: "ผู้สมัครไม่ได้อยู่ในสถานะรออนุมัติ",
       });
     }
 
-    if (action === "approve") {
-      await userRef.update({
-        status: "ONLINE",
-        updated_at: Timestamp.now(),
-      });
+    const approved = action === "approve";
 
-      return res.json({
-        ok: true,
-        message: "ยืนยันผู้สมัครสำเร็จ",
-        data: {
-          user_id: userId,
-          status: "ONLINE",
-        },
-      });
-    }
-
-
-    await userRef.update({
-      status: null,
-      store_id: null,
-
-    });
+    await userRef.update(
+      approved
+        ? {
+            status: "ONLINE",
+            updated_at: Timestamp.now(),
+          }
+        : {
+            status: null,
+            store_id: null,
+          }
+    );
 
     return res.json({
       ok: true,
-      message: "ปฏิเสธผู้สมัครสำเร็จ",
+      message: approved
+        ? "ยืนยันผู้สมัครสำเร็จ"
+        : "ปฏิเสธผู้สมัครสำเร็จ",
       data: {
         user_id: userId,
-        status: null,
+        status: approved ? "ONLINE" : null,
       },
     });
-
   } catch (error) {
     console.error("UPDATE APPLICANT STATUS ERROR:", error);
 
@@ -524,6 +473,7 @@ router.put("/store/:storeId/applicant/:userId/status", async (req, res) => {
     });
   }
 });
+
 
 router.put("/store/:id/hiring", async (req, res) => {
   try {

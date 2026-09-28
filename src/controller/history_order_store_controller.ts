@@ -1,26 +1,18 @@
+
 import { Router } from "express";
 import { db } from "../config/firebase.js";
+import { CustomerData } from "../modules/customer.js";
 
 export const router = Router();
 
 router.get("/customers/:id", async (req, res) => {
   try {
     const storeId = req.params.id;
-    const search = String(req.query.q ?? "")
+    const search = String(req.query.q || "")
       .trim()
       .toLowerCase();
 
-    if (!storeId) {
-      return res.status(400).json({
-        ok: false,
-        message: "กรุณาระบุ store_id",
-      });
-    }
-
-    const storeRef = db
-      .collection("stores")
-      .doc(storeId);
-
+    const storeRef = db.collection("stores").doc(storeId);
     const storeSnap = await storeRef.get();
 
     if (!storeSnap.exists) {
@@ -35,79 +27,51 @@ router.get("/customers/:id", async (req, res) => {
       .where("store_id", "==", storeRef)
       .get();
 
-    const customerRefMap =
-      new Map<
-        string,
-        FirebaseFirestore.DocumentReference
-      >();
+    const customerRefs = new Set<FirebaseFirestore.DocumentReference>();
 
-    ordersSnap.forEach((doc) => {
-      const data = doc.data();
-
+    ordersSnap.forEach((order) => {
       const customerRef =
-        data.customer_id as
+        order.data().customer_id as
           | FirebaseFirestore.DocumentReference
           | undefined;
 
-      if (customerRef?.id) {
-        customerRefMap.set(
-          customerRef.id,
-          customerRef,
-        );
+      if (customerRef) {
+        customerRefs.add(customerRef);
       }
     });
 
-    if (customerRefMap.size === 0) {
-      return res.json({
-        ok: true,
-        count: 0,
-        data: [],
-      });
-    }
-
-    const customerDocs = await Promise.all(
-      Array.from(
-        customerRefMap.values(),
-      ).map((ref) => ref.get()),
+    const customerSnaps = await Promise.all(
+      Array.from(customerRefs).map((customerRef) => customerRef.get(),),
     );
 
-    let customers = customerDocs
-      .filter((doc) => doc.exists)
-      .map((doc) => {
-        const data = doc.data();
+    let customers = customerSnaps
+      .filter((customer) => customer.exists)
+      .map((customer) => {
+        const data = customer.data() as CustomerData;
 
         return {
-          customer_id: doc.id,
-          fullname: data?.fullname ?? "",
-          email: data?.email ?? "",
-          phone: data?.phone ?? "",
-          profile_image:
-            data?.profile_image ?? "",
+          customer_id: customer.id,
+          fullname: data.fullname || "",
+          email: data.email || "",
+          phone: data.phone || "",
+          profile_image: data.profile_image || "",
         };
       });
 
     if (search) {
-      customers = customers.filter(
-        (customer) => {
-          const fullname = String(
-            customer.fullname,
-          ).toLowerCase();
-
-          const email = String(
-            customer.email,
-          ).toLowerCase();
-
-          const phone = String(
-            customer.phone,
-          ).toLowerCase();
-
-          return (
-            fullname.includes(search) ||
-            email.includes(search) ||
-            phone.includes(search)
-          );
-        },
-      );
+      customers = customers.filter((customer) => {
+        return (
+          customer.fullname
+            .toLowerCase()
+            .includes(search) ||
+          customer.email
+            .toLowerCase()
+            .includes(search) ||
+          customer.phone
+            .toLowerCase()
+            .includes(search)
+        );
+      });
     }
 
     return res.json({
@@ -115,16 +79,12 @@ router.get("/customers/:id", async (req, res) => {
       count: customers.length,
       data: customers,
     });
-  } catch (e: any) {
-    console.error(
-      "GET STORE CUSTOMERS ERROR:",
-      e,
-    );
+  } catch (error: any) {
+    console.error("GET STORE CUSTOMERS ERROR:", error);
 
     return res.status(500).json({
       ok: false,
-      message:
-        e.message ?? "Server error",
+      message: error.message || "Server error",
     });
   }
 });

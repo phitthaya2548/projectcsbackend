@@ -11,29 +11,19 @@ exports.router.get("/stores/list", async (req, res) => {
         const search = typeof req.query.search === "string"
             ? req.query.search.trim().toLowerCase()
             : "";
-        const storeSnap = await firebase_1.db
+        const snap = await firebase_1.db
             .collection("stores")
             .where("is_hiring", "==", true)
             .get();
-        if (storeSnap.empty) {
-            return res.json({
-                ok: true,
-                total: 0,
-                data: [],
-            });
-        }
-        const filteredStores = storeSnap.docs.filter((doc) => {
-            const store = doc.data();
+        const docs = snap.docs.filter((doc) => {
             if (!search)
                 return true;
-            const storeName = String(store.store_name ?? "").toLowerCase();
-            const address = String(store.address ?? "").toLowerCase();
-            const phone = String(store.phone ?? "").toLowerCase();
-            return (storeName.includes(search) ||
-                address.includes(search) ||
-                phone.includes(search));
+            const store = doc.data();
+            return [store.store_name, store.address, store.phone]
+                .map((value) => String(value ?? "").toLowerCase())
+                .some((value) => value.includes(search));
         });
-        const stores = await Promise.all(filteredStores.map(async (doc) => {
+        const data = await Promise.all(docs.map(async (doc) => {
             const store = doc.data();
             const reviewSnap = await firebase_1.db
                 .collection("reviews")
@@ -43,7 +33,7 @@ exports.router.get("/stores/list", async (req, res) => {
                 avg: firestore_1.AggregateField.average("rating"),
             })
                 .get();
-            const reviewData = reviewSnap.data();
+            const review = reviewSnap.data();
             return {
                 store_id: doc.id,
                 store_name: store.store_name ?? "",
@@ -62,14 +52,14 @@ exports.router.get("/stores/list", async (req, res) => {
                 profile_image: store.profile_image ?? "",
                 status: store.status ?? "TEMP_CLOSED",
                 is_hiring: true,
-                total_reviews: reviewData.total ?? 0,
-                avg_rating: Number(Number(reviewData.avg ?? 0).toFixed(1)),
+                total_reviews: review.total ?? 0,
+                avg_rating: Number(Number(review.avg ?? 0).toFixed(1)),
             };
         }));
         return res.json({
             ok: true,
-            total: stores.length,
-            data: stores,
+            total: data.length,
+            data,
         });
     }
     catch (error) {
@@ -80,6 +70,7 @@ exports.router.get("/stores/list", async (req, res) => {
         });
     }
 });
+// สมัครร้านค้าไรเดอร์
 exports.router.put("/rider/store/:id", async (req, res) => {
     try {
         const riderId = req.params.id;
@@ -99,8 +90,8 @@ exports.router.put("/rider/store/:id", async (req, res) => {
                 message: "ไม่พบไรเดอร์",
             });
         }
-        const riderData = riderSnap.data();
-        if (riderData?.store_id) {
+        const riderData = riderSnap.data() ?? {};
+        if (riderData.store_id) {
             const currentStoreId = riderData.store_id.id;
             if (riderData.status === "pending" &&
                 currentStoreId === targetStoreId) {
@@ -120,9 +111,7 @@ exports.router.put("/rider/store/:id", async (req, res) => {
                 message: "คุณสังกัดร้านค้าอยู่แล้ว ไม่สามารถสมัครร้านใหม่ได้",
             });
         }
-        const storeRef = firebase_1.db
-            .collection("stores")
-            .doc(targetStoreId);
+        const storeRef = firebase_1.db.collection("stores").doc(targetStoreId);
         const storeSnap = await storeRef.get();
         if (!storeSnap.exists) {
             return res.status(404).json({
@@ -130,31 +119,30 @@ exports.router.put("/rider/store/:id", async (req, res) => {
                 message: "ไม่พบร้านค้าที่เลือก",
             });
         }
-        const storeData = storeSnap.data();
-        if (storeData?.is_hiring !== true) {
+        const storeData = storeSnap.data() ?? {};
+        if (storeData.is_hiring !== true) {
             return res.status(400).json({
                 ok: false,
                 message: "ร้านนี้ปิดรับสมัครพนักงานอยู่ในขณะนี้",
             });
         }
-        const updateData = {
+        await riderRef.update({
             store_id: storeRef,
             status: "pending",
-        };
-        await riderRef.update(updateData);
+        });
         return res.json({
             ok: true,
             message: "ส่งคำขอผูกร้านค้าสำเร็จ กรุณารอร้านค้ายืนยัน",
             data: {
                 rider_id: riderId,
                 store_id: storeRef.id,
-                store_name: storeData?.store_name ?? "",
+                store_name: storeData.store_name ?? "",
                 status: "pending",
             },
         });
     }
-    catch (e) {
-        console.error("RIDER LINK STORE ERROR:", e);
+    catch (error) {
+        console.error("RIDER LINK STORE ERROR:", error);
         return res.status(500).json({
             ok: false,
             message: "Server error",
@@ -246,10 +234,8 @@ exports.router.put("/staff/store/:id", async (req, res) => {
 });
 exports.router.get("/store/:id/applicants", async (req, res) => {
     try {
-        const storeId = req.params.id;
-        const storeRef = firebase_1.db.collection("stores").doc(storeId);
-        const storeSnap = await storeRef.get();
-        if (!storeSnap.exists) {
+        const storeRef = firebase_1.db.collection("stores").doc(req.params.id);
+        if (!(await storeRef.get()).exists) {
             return res.status(404).json({
                 ok: false,
                 message: "ไม่พบร้านค้า",
@@ -267,6 +253,12 @@ exports.router.get("/store/:id/applicants", async (req, res) => {
                 .where("status", "==", "pending")
                 .get(),
         ]);
+        const formatDate = (date) => date
+            ? {
+                _seconds: date.seconds,
+                _nanoseconds: date.nanoseconds,
+            }
+            : null;
         const riders = ridersSnap.docs.map((doc) => {
             const data = doc.data();
             return {
@@ -277,12 +269,7 @@ exports.router.get("/store/:id/applicants", async (req, res) => {
                 profile_image: data.profile_image ?? "",
                 vehicle_type: data.vehicle_type ?? "",
                 license_plate: data.license_plate ?? "",
-                applied_at: data.updated_at
-                    ? {
-                        _seconds: data.updated_at.seconds,
-                        _nanoseconds: data.updated_at.nanoseconds,
-                    }
-                    : null,
+                applied_at: formatDate(data.updated_at),
                 role: "rider",
             };
         });
@@ -294,12 +281,7 @@ exports.router.get("/store/:id/applicants", async (req, res) => {
                 email: data.email ?? "",
                 phone: data.phone ?? "",
                 profile_image: data.profile_image ?? "",
-                applied_at: data.updated_at
-                    ? {
-                        _seconds: data.updated_at.seconds,
-                        _nanoseconds: data.updated_at.nanoseconds,
-                    }
-                    : null,
+                applied_at: formatDate(data.updated_at),
                 role: "laundry_staff",
             };
         });
@@ -312,41 +294,35 @@ exports.router.get("/store/:id/applicants", async (req, res) => {
             },
         });
     }
-    catch (e) {
-        console.error("GET STORE APPLICANTS ERROR:", e);
+    catch (error) {
+        console.error("GET STORE APPLICANTS ERROR:", error);
         return res.status(500).json({
             ok: false,
-            message: e.message ?? "Server error",
+            message: error.message ?? "Server error",
         });
     }
 });
+// อัปเดตสถานะผู้สมัคร (อนุมัติ/ปฏิเสธ)
 exports.router.put("/store/:storeId/applicant/:userId/status", async (req, res) => {
     try {
-        const storeId = req.params.storeId;
-        const userId = req.params.userId;
+        const { storeId, userId } = req.params;
         const { role, action } = req.body;
-        if (role !== "rider" && role !== "laundry_staff") {
+        if (!["rider", "laundry_staff"].includes(role)) {
             return res.status(400).json({
                 ok: false,
                 message: "role ไม่ถูกต้อง",
             });
         }
-        if (action !== "approve" && action !== "reject") {
+        if (!["approve", "reject"].includes(action)) {
             return res.status(400).json({
                 ok: false,
                 message: "action ไม่ถูกต้อง",
             });
         }
-        let collectionName = "";
-        if (role === "rider") {
-            collectionName = "riders";
-        }
-        else {
-            collectionName = "laundry_staff";
-        }
-        const userRef = firebase_1.db
-            .collection(collectionName)
-            .doc(userId);
+        const collection = role === "rider"
+            ? "riders"
+            : "laundry_staff";
+        const userRef = firebase_1.db.collection(collection).doc(userId);
         const userSnap = await userRef.get();
         if (!userSnap.exists) {
             return res.status(404).json({
@@ -361,36 +337,30 @@ exports.router.put("/store/:storeId/applicant/:userId/status", async (req, res) 
                 message: "ผู้สมัครไม่ได้สมัครร้านนี้",
             });
         }
-        if (userData?.status !== "pending") {
+        if (userData.status !== "pending") {
             return res.status(400).json({
                 ok: false,
                 message: "ผู้สมัครไม่ได้อยู่ในสถานะรออนุมัติ",
             });
         }
-        if (action === "approve") {
-            await userRef.update({
+        const approved = action === "approve";
+        await userRef.update(approved
+            ? {
                 status: "ONLINE",
                 updated_at: firestore_1.Timestamp.now(),
+            }
+            : {
+                status: null,
+                store_id: null,
             });
-            return res.json({
-                ok: true,
-                message: "ยืนยันผู้สมัครสำเร็จ",
-                data: {
-                    user_id: userId,
-                    status: "ONLINE",
-                },
-            });
-        }
-        await userRef.update({
-            status: null,
-            store_id: null,
-        });
         return res.json({
             ok: true,
-            message: "ปฏิเสธผู้สมัครสำเร็จ",
+            message: approved
+                ? "ยืนยันผู้สมัครสำเร็จ"
+                : "ปฏิเสธผู้สมัครสำเร็จ",
             data: {
                 user_id: userId,
-                status: null,
+                status: approved ? "ONLINE" : null,
             },
         });
     }

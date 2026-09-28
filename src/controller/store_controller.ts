@@ -13,19 +13,14 @@ export const router = Router();
 router.put("/profile/:id", upload.single("profile_image"), async (req, res) => {
   try {
     const storeId = req.params.id as string;
-    console.log("body:", req.body);
     const ref = db.collection("stores").doc(storeId);
-    const exist = await ref.get();
+    const doc = await ref.get();
 
-    if (!exist.exists) {
-      return res.status(404).json({
-        ok:false,
-        message:"ไม่พบร้านค้า"
-      });
+    if (!doc.exists) {
+      return res.status(404).json({ ok: false, message: "ไม่พบร้านค้า" });
     }
 
-    const currentStatus = exist.data()?.status;
-
+    const oldData = doc.data() || {};
     const {
       store_name,
       email,
@@ -44,124 +39,205 @@ router.put("/profile/:id", upload.single("profile_image"), async (req, res) => {
       detergent_price
     } = req.body;
 
-    const emailNorm = email?.trim().toLowerCase() || "";
+    const collections = ["stores", "customers", "riders", "laundry_staff"];
 
-    if (email !== undefined) {
-      const [riderSnap, storeSnap, customerSnap, staffSnap] = await Promise.all([
-        db.collection("riders").where("email", "==", emailNorm).limit(1).get(),
-        db.collection("stores").where("email", "==", emailNorm).limit(1).get(),
-        db.collection("customers").where("email", "==", emailNorm).limit(1).get(),
-        db.collection("laundry_staff").where("email", "==", emailNorm).limit(1).get(),
-      ]);
+    if (store_name == null || store_name.trim() === "") {
+      return res.status(400).json({ ok: false, message: "โปรดกรอกชื่อร้าน" });
+    }
 
-      const usedInRiders = !riderSnap.empty;
-      const usedInCustomers = !customerSnap.empty;
-      const usedInStaff = !staffSnap.empty;
-      const usedInOtherStore =
-        !storeSnap.empty && storeSnap.docs[0].id !== storeId;
+    if (email == null || email.trim() === "") {
+      return res.status(400).json({ ok: false, message: "โปรดกรอกอีเมล" });
+    }
 
-      if (usedInRiders || usedInCustomers || usedInStaff || usedInOtherStore) {
-        return res.status(409).json({
-          ok: false,
-          message: "อีเมลนี้ถูกใช้แล้ว"
-        });
+    if (phone == null || phone.trim() === "") {
+      return res.status(400).json({ ok: false, message: "โปรดกรอกเบอร์โทร" });
+    }
+    if (phone.trim().length < 9 || phone.trim().length > 10) {
+      return res.status(400).json({ ok: false, message: "เบอร์โทรไม่ถูกต้อง" });
+    }
+
+    const storeNameValue = store_name.trim();
+    const emailValue = email.trim().toLowerCase();
+    const phoneValue = phone.trim();
+
+    if (phoneValue !== (oldData.phone || "")) {
+      for (const collection of collections) {
+        const result = await db.collection(collection).where("phone", "==", phoneValue).limit(1).get();
+
+        if (!result.empty) {
+          const foundId = result.docs[0].id;
+
+          if (collection === "stores" && foundId === storeId) {
+            continue;
+          }
+
+          return res.status(409).json({ ok: false, message: "เบอร์โทรนี้ถูกใช้งานแล้ว" });
+        }
       }
     }
 
-    const update: Record<string,any> = {};
+    if (emailValue !== (oldData.email || "")) {
+      for (const collection of collections) {
+        const result = await db.collection(collection).where("email", "==", emailValue).limit(1).get();
 
-    if (store_name !== undefined)
-      update.store_name = store_name || null;
+        if (!result.empty) {
+          const foundId = result.docs[0].id;
 
-    if (email !== undefined)
-      update.email = emailNorm || null;
+          if (collection === "stores" && foundId === storeId) {
+            continue;
+          }
 
-    if (phone !== undefined)
-      update.phone = phone || null;
+          return res.status(409).json({ ok: false, message: "อีเมลนี้ถูกใช้งานแล้ว" });
+        }
+      }
+    }
 
-    if (address !== undefined)
-      update.address = address || null;
+    const update: any = {};
 
-    if (opening_hours !== undefined)
-      update.opening_hours = opening_hours || null;
+    update.store_name = storeNameValue;
+    update.email = emailValue;
+    update.phone = phoneValue;
 
-    if (closed_hours !== undefined)
-      update.closed_hours = closed_hours || null;
+    if (address != null && address.trim() !== "") {
+      update.address = address.trim();
+    }
 
-    if (facebook !== undefined)
-      update.facebook = facebook || null;
+    if (opening_hours != null && opening_hours.trim() !== "") {
+      update.opening_hours = opening_hours.trim();
+    }
 
-    if (line_id !== undefined)
-      update.line_id = line_id || null;
+    if (closed_hours != null && closed_hours.trim() !== "") {
+      update.closed_hours = closed_hours.trim();
+    }
 
-    if (status !== undefined) {
+    if (facebook != null && facebook.trim() !== "") {
+      update.facebook = facebook.trim();
+    }
+
+    if (line_id != null && line_id.trim() !== "") {
+      update.line_id = line_id.trim();
+    }
+
+    if (status != null && status !== "") {
       update.status = status;
-    } else if (currentStatus === "PENDING") {
+    } else if (oldData.status === "PENDING") {
       update.status = "TEMP_CLOSED";
     }
 
-    if (detergent_price !== undefined) {
-      const detergent = Number(detergent_price);
-      if (!isNaN(detergent)) update.detergent_price = detergent;
+    if (service_radius != null && service_radius !== "") {
+      const value = Number(service_radius);
+
+      if (Number.isNaN(value)) {
+        return res.status(400).json({ ok: false, message: "service_radius ต้องเป็นตัวเลข" });
+      }
+
+      if (value < 0) {
+        return res.status(400).json({ ok: false, message: "ไม่กรอกตัวเลขติดลบ" });
+      }
+
+      update.service_radius = value;
     }
 
-    if (service_radius !== undefined) {
-      const sr = Number(service_radius);
-      if (!isNaN(sr)) update.service_radius = sr;
+    if (latitude != null && latitude !== "") {
+      const value = Number(latitude);
+
+      if (Number.isNaN(value)) {
+        return res.status(400).json({ ok: false, message: "latitude ต้องเป็นตัวเลข" });
+      }
+
+      update.latitude = value;
     }
 
-    if (latitude !== undefined) {
-      const lat = Number(latitude);
-      if (!isNaN(lat)) update.latitude = lat;
+    if (longitude != null && longitude !== "") {
+      const value = Number(longitude);
+
+      if (Number.isNaN(value)) {
+        return res.status(400).json({ ok: false, message: "longitude ต้องเป็นตัวเลข" });
+      }
+
+      update.longitude = value;
     }
 
-    if (longitude !== undefined) {
-      const lng = Number(longitude);
-      if (!isNaN(lng)) update.longitude = lng;
+    if (delivery_min != null && delivery_min !== "") {
+      const value = Number(delivery_min);
+
+      if (Number.isNaN(value)) {
+        return res.status(400).json({ ok: false, message: "ระยะทางขั้นต่ำต้องเป็นตัวเลข" });
+      }
+
+      if (value < 0) {
+        return res.status(400).json({ ok: false, message: "ไม่กรอกตัวเลขติดลบ" });
+      }
+
+      update.delivery_min = value;
     }
 
-    if (delivery_min !== undefined) {
-      const min = Number(delivery_min);
-      if (!isNaN(min)) update.delivery_min = min;
+    if (delivery_max != null && delivery_max !== "") {
+      const value = Number(delivery_max);
+
+      if (Number.isNaN(value)) {
+        return res.status(400).json({ ok: false, message: "ระยะทางสูงสุดต้องเป็นตัวเลข" });
+      }
+
+      if (value < 0) {
+        return res.status(400).json({ ok: false, message: "ไม่กรอกตัวเลขติดลบ" });
+      }
+
+      update.delivery_max = value;
     }
 
-    if (delivery_max !== undefined) {
-      const max = Number(delivery_max);
-      if (!isNaN(max)) update.delivery_max = max;
+    if (
+      delivery_min != null &&
+      delivery_min !== "" &&
+      delivery_max != null &&
+      delivery_max !== "" &&
+      Number(delivery_min) > Number(delivery_max)
+    ) {
+      return res.status(400).json({
+        ok: false,
+        message: "ระยะทางขั้นต่ำต้องไม่มากกว่าระยะทางสูงสุด"
+      });
+    }
+
+    if (detergent_price != null && detergent_price !== "") {
+      const value = Number(detergent_price);
+
+      if (Number.isNaN(value)) {
+        return res.status(400).json({ ok: false, message: "ราคาน้ำยาต้องเป็นตัวเลข" });
+      }
+
+      if (value < 0) {
+        return res.status(400).json({ ok: false, message: "ไม่กรอกตัวเลขติดลบ" });
+      }
+
+      update.detergent_price = value;
     }
 
     if (req.file) {
-      const safeName = (req.file.originalname || "profile")
-        .replace(/[^\w.-]/g, "_");
-
-      const objectPath =
-        `stores/${storeId}/profile_${Date.now()}_${safeName}`;
-
-      const file = bucket.file(objectPath);
+      const fileName = `stores/${storeId}/profile_${Date.now()}_${req.file.originalname}`;
+      const file = bucket.file(fileName);
 
       await file.save(req.file.buffer, {
         contentType: req.file.mimetype,
-        resumable: false,
+        resumable: false
       });
 
       await file.makePublic();
 
-      update.profile_image =
-        `https://storage.googleapis.com/${bucket.name}/${file.name}`;
+      update.profile_image = `https://storage.googleapis.com/${bucket.name}/${file.name}`;
     }
 
-    update.updated_at =
-      admin.firestore.FieldValue.serverTimestamp();
+    update.updated_at = admin.firestore.FieldValue.serverTimestamp();
 
-    await ref.set(update,{merge:true});
+    await ref.set(update, { merge: true });
 
-    const snap = await ref.get();
-    const data = snap.data() as StoreData;
+    const newDoc = await ref.get();
+    const data = newDoc.data() || {};
 
     return res.json({
-      ok:true,
+      ok: true,
       store_id: storeId,
-      data:{
+      data: {
         store_id: data.store_id ?? storeId,
         username: data.username ?? "",
         store_name: data.store_name ?? "",
@@ -180,19 +256,20 @@ router.put("/profile/:id", upload.single("profile_image"), async (req, res) => {
         wallet_balance: Number(data.wallet_balance ?? 0),
         delivery_min: Number(data.delivery_min ?? 0),
         delivery_max: Number(data.delivery_max ?? 0),
-        detergent_price: Number(data.detergent_price ?? 0),
+        detergent_price: Number(data.detergent_price ?? 0)
       }
     });
-
-  } catch (e:any) {
-    console.error("STORE PROFILE UPDATE ERROR:", e);
-
+  } catch (error: any) {
+    console.error("STORE PROFILE UPDATE ERROR:", error);
     return res.status(500).json({
-      ok:false,
-      message:e.message ?? "Server error"
+      ok: false,
+      message: error.message || "Server error"
     });
   }
 });
+
+
+
 router.get("/profile/:id", async (req, res) => {
   try {
     const storeId = req.params.id as string;
@@ -244,6 +321,7 @@ router.get("/profile/:id", async (req, res) => {
     });
   }
 });
+//รายละเอียดร้านค้าฝั่งลุกค้า
 router.get("/customer/profile/:id", async (req, res) => {
   try {
     const storeId = req.params.id as string;
@@ -680,9 +758,16 @@ router.post("/machine", async (req, res) => {
     ) {
       return res.status(400).json({
         ok: false,
-        message: "capacity/price/work_minutes ต้องเป็นตัวเลข",
+        message: "ต้องเป็นตัวเลข",
       });
     }
+    if(data.capacity < 0 || data.price < 0 || data.work_minutes < 0){
+      return res.status(400).json({
+        ok: false,
+        message: "ห้ามกรอกตัวเลขติดลบ",
+      });
+    }
+
 
     if (data.status && !MACHINE_STATUS.includes(data.status)) {
       return res.status(400).json({
@@ -751,15 +836,6 @@ router.put("/machine/update/:id", async (req, res) => {
       });
     }
 
-    
-    if (data.status !== undefined && !MACHINE_STATUS.includes(data.status)) {
-      return res.status(400).json({
-        ok: false,
-        message: "status ไม่ถูกต้อง",
-      });
-    }
-
-    
     if (data.type && !["washer", "dryer"].includes(data.type)) {
       return res.status(400).json({
         ok: false,
@@ -767,50 +843,61 @@ router.put("/machine/update/:id", async (req, res) => {
       });
     }
 
-    
     if (
-      (data.capacity !== undefined && isNaN(Number(data.capacity))) ||
-      (data.price !== undefined && isNaN(Number(data.price))) ||
-      (data.work_minutes !== undefined && isNaN(Number(data.work_minutes)))
+      (data.capacity !== undefined && data.capacity !== "" && isNaN(Number(data.capacity))) ||
+      (data.price !== undefined && data.price !== "" && isNaN(Number(data.price))) ||
+      (data.work_minutes !== undefined && data.work_minutes !== "" && isNaN(Number(data.work_minutes)))
     ) {
       return res.status(400).json({
         ok: false,
-        message: "capacity/price/work_minutes ต้องเป็นตัวเลข",
+        message: " ต้องเป็นตัวเลข",
+      });
+    }
+
+    if (Number(data.capacity) < 0 || Number(data.price) < 0 || Number(data.work_minutes) < 0) {
+      return res.status(400).json({
+        ok: false,
+        message: "ห้ามกรอกตัวเลขติดลบ",
       });
     }
 
     const update: Partial<Machine> = {};
 
-    if (data.machine_id !== undefined) {
+    if (data.machine_id !== undefined && data.machine_id !== "") {
       update.machine_id = data.machine_id.trim();
     }
 
-    if (data.name !== undefined) {
+    if (data.name !== undefined && data.name !== "") {
       update.name = data.name.trim();
     }
 
-    if (data.type !== undefined) {
+    if (data.type !== undefined && data.type !== "") {
       update.type = data.type;
     }
 
-    if (data.capacity !== undefined) {
+    if (data.capacity !== undefined && data.capacity !== "") {
       update.capacity = Number(data.capacity);
     }
 
-    if (data.price !== undefined) {
+    if (data.price !== undefined && data.price !== "") {
       update.price = Number(data.price);
     }
 
-    if (data.work_minutes !== undefined) {
+    if (data.work_minutes !== undefined && data.work_minutes !== "") {
       update.work_minutes = Number(data.work_minutes);
     }
 
-    if (data.status !== undefined) {
+    if (data.status !== undefined && data.status !== "") {
+      if (!MACHINE_STATUS.includes(data.status)) {
+        return res.status(400).json({
+          ok: false,
+          message: "status ไม่ถูกต้อง",
+        });
+      }
       update.status = data.status;
     }
 
-    
-    if (data.store_id !== undefined) {
+    if (data.store_id !== undefined && data.store_id !== "") {
       const storeRef = db.collection("stores").doc(data.store_id);
       const storeSnap = await storeRef.get();
 
@@ -836,7 +923,6 @@ router.put("/machine/update/:id", async (req, res) => {
     const updatedSnap = await machineref.get();
     const result = updatedSnap.data() as Machine;
 
-
     return res.json({
       ok: true,
       message: "แก้ไขเครื่องสำเร็จ",
@@ -853,7 +939,6 @@ router.put("/machine/update/:id", async (req, res) => {
     });
   }
 });
-
 router.get("/machines/:id", async (req, res) => {
   try {
     const storeId = req.params.id;

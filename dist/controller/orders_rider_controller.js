@@ -24,7 +24,6 @@ exports.router.put("/update/status/:id", upload_1.upload.single("image"), async 
             "arrived_at_shop",
             "waiting_wash",
             "waiting_dry",
-            "delivery_heading_to_shop",
             "delivery_pickup_completed",
             "delivery_in_progress",
             "completed",
@@ -88,7 +87,7 @@ exports.router.put("/update/status/:id", upload_1.upload.single("image"), async 
         }
         let publicUrl = null;
         if (req.file) {
-            const safeOriginalName = req.file.originalname.replace(/[^\w.\-]/g, "_");
+            const safeOriginalName = req.file.originalname.replace(/[^\w.-]/g, "_");
             const fileName = `orders/${order_id}/${Date.now()}_${safeOriginalName}`;
             uploadedFilePath = fileName;
             const file = firebase_1.bucket.file(fileName);
@@ -98,8 +97,7 @@ exports.router.put("/update/status/:id", upload_1.upload.single("image"), async 
                 },
             });
             await file.makePublic();
-            publicUrl =
-                `https://storage.googleapis.com/${firebase_1.bucket.name}/${fileName}`;
+            publicUrl = `https://storage.googleapis.com/${firebase_1.bucket.name}/${fileName}`;
         }
         let didUpdate = false;
         let customerId = null;
@@ -133,8 +131,7 @@ exports.router.put("/update/status/:id", upload_1.upload.single("image"), async 
                     updateData.rider_pickup_id = riderRef;
                 }
             }
-            if (status === "waiting_wash" ||
-                status === "waiting_dry") {
+            if (status === "waiting_wash" || status === "waiting_dry") {
                 updateData.rider_pickup_id = riderRef;
             }
             if (status === "delivery_heading_to_shop") {
@@ -153,17 +150,14 @@ exports.router.put("/update/status/:id", upload_1.upload.single("image"), async 
                 }
             }
             tx.update(orderRef, updateData);
-            customerId =
-                freshOrderData.customer_id?.id ?? null;
+            customerId = freshOrderData.customer_id?.id ?? null;
             didUpdate = true;
         });
         transactionCommitted = true;
         if (!didUpdate) {
             if (uploadedFilePath) {
                 try {
-                    await firebase_1.bucket
-                        .file(uploadedFilePath)
-                        .delete();
+                    await firebase_1.bucket.file(uploadedFilePath).delete();
                 }
                 catch (error) {
                     console.error("delete unused image error:", error);
@@ -257,8 +251,7 @@ exports.router.put("/update/status/:id", upload_1.upload.single("image"), async 
                 message: "ไม่พบร้านค้า",
             });
         }
-        if (error?.message ===
-            "INVALID_TOTAL_AMOUNT") {
+        if (error?.message === "INVALID_TOTAL_AMOUNT") {
             return res.status(500).json({
                 ok: false,
                 message: "ยอดเงินออเดอร์ไม่ถูกต้อง",
@@ -272,7 +265,7 @@ exports.router.put("/update/status/:id", upload_1.upload.single("image"), async 
 });
 exports.router.get("/:id", async (req, res) => {
     try {
-        const rider_id = String(req.params.id || "").trim();
+        const rider_id = req.params.id;
         if (!rider_id) {
             return res.status(400).json({
                 ok: false,
@@ -281,11 +274,8 @@ exports.router.get("/:id", async (req, res) => {
         }
         const riderLat = parseFloat(req.query.lat);
         const riderLng = parseFloat(req.query.lng);
-        const hasRiderLocation = !isNaN(riderLat) &&
-            !isNaN(riderLng);
-        const riderRef = firebase_1.db
-            .collection("riders")
-            .doc(rider_id);
+        const hasRiderLocation = !isNaN(riderLat) && !isNaN(riderLng);
+        const riderRef = firebase_1.db.collection("riders").doc(rider_id);
         const riderSnap = await riderRef.get();
         if (!riderSnap.exists) {
             return res.status(404).json({
@@ -302,26 +292,22 @@ exports.router.get("/:id", async (req, res) => {
             "delivery_pickup_completed",
             "delivery_heading_to_shop",
         ];
-        const [pickupOrdersSnap, deliveryOrdersSnap,] = await Promise.all([
-            firebase_1.db
-                .collection("orders")
+        const [pickupSnap, deliverySnap] = await Promise.all([
+            firebase_1.db.collection("orders")
                 .where("rider_pickup_id", "==", riderRef)
                 .where("status", "in", activeStatuses)
                 .get(),
-            firebase_1.db
-                .collection("orders")
+            firebase_1.db.collection("orders")
                 .where("rider_delivery_id", "==", riderRef)
                 .where("status", "in", activeStatuses)
                 .get(),
         ]);
-        const orderMap = new Map();
-        for (const doc of pickupOrdersSnap.docs) {
-            orderMap.set(doc.id, doc);
+        const orderDocs = pickupSnap.docs;
+        for (const doc of deliverySnap.docs) {
+            if (!orderDocs.some((item) => item.id === doc.id)) {
+                orderDocs.push(doc);
+            }
         }
-        for (const doc of deliveryOrdersSnap.docs) {
-            orderMap.set(doc.id, doc);
-        }
-        const orderDocs = Array.from(orderMap.values());
         if (orderDocs.length === 0) {
             return res.status(200).json({
                 ok: true,
@@ -330,41 +316,29 @@ exports.router.get("/:id", async (req, res) => {
         }
         const orders = await Promise.all(orderDocs.map(async (orderDoc) => {
             const orderData = orderDoc.data();
-            const addressRef = orderData.address_id ?? null;
-            const customerRef = orderData.customer_id ?? null;
-            const [addressSnap, customerSnap,] = await Promise.all([
-                addressRef
-                    ? addressRef.get()
-                    : Promise.resolve(null),
-                customerRef
-                    ? customerRef.get()
-                    : Promise.resolve(null),
-            ]);
+            const addressSnap = orderData.address_id
+                ? await orderData.address_id.get()
+                : null;
+            const customerSnap = orderData.customer_id
+                ? await orderData.customer_id.get()
+                : null;
             let addressText = null;
             let addressLat = null;
             let addressLng = null;
-            if (addressSnap &&
-                addressSnap.exists) {
+            if (addressSnap?.exists) {
                 const addressData = addressSnap.data();
-                addressText =
-                    addressData?.address_text ?? null;
-                addressLat =
-                    addressData?.latitude ?? null;
-                addressLng =
-                    addressData?.longitude ?? null;
+                addressText = addressData.address_text ?? null;
+                addressLat = addressData.latitude ?? null;
+                addressLng = addressData.longitude ?? null;
             }
             let customer = null;
-            if (customerSnap &&
-                customerSnap.exists) {
+            if (customerSnap?.exists) {
                 const customerData = customerSnap.data();
                 customer = {
                     id: customerSnap.id,
-                    name: customerData?.fullname ??
-                        null,
-                    phone: customerData?.phone ??
-                        null,
-                    profile_image: customerData?.profile_image ??
-                        null,
+                    name: customerData.fullname ?? null,
+                    phone: customerData.phone ?? null,
+                    profile_image: customerData.profile_image ?? null,
                 };
             }
             let distanceKm = null;
@@ -373,40 +347,26 @@ exports.router.get("/:id", async (req, res) => {
                 addressLng !== null) {
                 const distance = haversine_1.DistanceService.haversineKm(riderLat, riderLng, Number(addressLat), Number(addressLng));
                 if (Number.isFinite(distance)) {
-                    distanceKm =
-                        Number(distance.toFixed(1));
+                    distanceKm = Number(distance.toFixed(1));
                 }
             }
             let orderDatetime = null;
             if (orderData.order_datetime) {
-                orderDatetime =
-                    orderData.order_datetime
-                        .toDate()
-                        .toISOString();
+                orderDatetime = orderData.order_datetime
+                    .toDate()
+                    .toISOString();
             }
             return {
                 id: orderDoc.id,
-                order_number: orderData.order_id ??
-                    null,
-                status: orderData.status ??
-                    null,
-                service_type: orderData.service_type ??
-                    null,
+                order_number: orderData.order_id ?? null,
+                status: orderData.status ?? null,
+                service_type: orderData.service_type ?? null,
                 distance_km: distanceKm,
-                note: orderData.note ??
-                    null,
-                before_wash_image: orderData.before_wash_image ??
-                    null,
-                after_wash_image: orderData.after_wash_image ??
-                    null,
-                rider_pickup_id: orderData
-                    .rider_pickup_id
-                    ?.id ??
-                    null,
-                rider_delivery_id: orderData
-                    .rider_delivery_id
-                    ?.id ??
-                    null,
+                note: orderData.note ?? null,
+                before_wash_image: orderData.before_wash_image ?? null,
+                after_wash_image: orderData.after_wash_image ?? null,
+                rider_pickup_id: orderData.rider_pickup_id?.id ?? null,
+                rider_delivery_id: orderData.rider_delivery_id?.id ?? null,
                 address_lat: addressLat,
                 address_lng: addressLng,
                 order_datetime: orderDatetime,
@@ -427,94 +387,88 @@ exports.router.get("/:id", async (req, res) => {
         });
     }
 });
-exports.router.get("/detail/:id", async (req, res) => {
+exports.router.get("/store/address/:id", async (req, res) => {
     try {
-        const order_id = String(req.params.id || "").trim();
-        if (!order_id) {
+        const storeId = req.params.id?.trim();
+        if (!storeId) {
             return res.status(400).json({
                 ok: false,
-                message: "กรุณาระบุ order_id",
+                message: "กรุณาระบุ store_id",
             });
         }
-        const orderRef = firebase_1.db
-            .collection("orders")
-            .doc(order_id);
-        const orderSnap = await orderRef.get();
-        if (!orderSnap.exists) {
+        const storeRef = firebase_1.db.collection("stores").doc(storeId);
+        const storeSnap = await storeRef.get();
+        if (!storeSnap.exists) {
             return res.status(404).json({
                 ok: false,
-                message: "ไม่พบคำสั่งซื้อ",
+                message: "ไม่พบร้านค้า",
             });
         }
-        const orderData = orderSnap.data();
-        const customerRef = orderData.customer_id ?? null;
-        const addressRef = orderData.address_id ?? null;
-        const [customerSnap, addressSnap,] = await Promise.all([
-            customerRef
-                ? customerRef.get()
-                : Promise.resolve(null),
-            addressRef
-                ? addressRef.get()
-                : Promise.resolve(null),
-        ]);
-        let customer = null;
-        if (customerSnap &&
-            customerSnap.exists) {
-            const customerData = customerSnap.data();
-            customer = {
-                customer_id: customerSnap.id,
-                username: customerData.username ?? null,
-                fullname: customerData.fullname ?? null,
-                profile_image: customerData.profile_image ?? null,
-                phone: customerData.phone ?? null,
-            };
-        }
-        let address = null;
-        if (addressSnap &&
-            addressSnap.exists) {
-            const addressData = addressSnap.data();
-            address = {
-                address_text: addressData.address_text ?? null,
-                latitude: addressData.latitude ?? null,
-                longitude: addressData.longitude ?? null,
-            };
-        }
-        let orderDatetime = null;
-        if (orderData.order_datetime) {
-            const dt = orderData.order_datetime.toDate();
-            orderDatetime = dt.toISOString();
-        }
+        const storeData = storeSnap.data();
         return res.status(200).json({
             ok: true,
             data: {
+                store_name: storeData.store_name,
+                address: storeData.address,
+                image: storeData.profile_image,
+                latitude: storeData.latitude,
+                longitude: storeData.longitude,
+            },
+        });
+    }
+    catch (e) {
+        return res.status(500).json({
+            ok: false,
+            message: "server error",
+        });
+    }
+});
+exports.router.get("/detail/:id", async (req, res) => {
+    try {
+        const order_id = req.params.id;
+        if (!order_id)
+            return res.status(400).json({ ok: false, message: "กรุณาระบุ order_id" });
+        const orderRef = firebase_1.db.collection("orders").doc(order_id);
+        const orderSnap = await orderRef.get();
+        if (!orderSnap.exists)
+            return res.status(404).json({ ok: false, message: "ไม่พบคำสั่งซื้อ" });
+        const order = orderSnap.data();
+        const [customerSnap, addressSnap] = await Promise.all([
+            order.customer_id ? order.customer_id.get() : null,
+            order.address_id ? order.address_id.get() : null,
+        ]);
+        const customerData = customerSnap?.exists ? customerSnap.data() : null;
+        const addressData = addressSnap?.exists ? addressSnap.data() : null;
+        return res.json({
+            ok: true,
+            data: {
                 order_id: orderSnap.id,
-                customer_id: orderData.customer_id?.id ?? null,
-                address_id: orderData.address_id?.id ?? null,
-                store_id: orderData.store_id?.id ?? null,
-                service_type: orderData.service_type ?? null,
-                wash_dry_weight: orderData.wash_dry_weight ?? null,
-                service_price: orderData.service_price ?? null,
-                detergent_option: orderData.detergent_option ?? null,
-                note: orderData.note ?? null,
-                status: orderData.status ?? null,
-                order_datetime: orderDatetime,
-                customer: customer,
-                address: address,
+                service_type: order.service_type ?? null,
+                wash_dry_weight: order.wash_dry_weight ?? null,
+                detergent_option: order.detergent_option ?? null,
+                note: order.note ?? null,
+                order_datetime: order.order_datetime?.toDate().toISOString() ?? null,
+                customer: customerData ? {
+                    fullname: customerData.fullname ?? null,
+                    phone: customerData.phone ?? null,
+                } : null,
+                address: addressData ? {
+                    address_text: addressData.address_text ?? null,
+                    latitude: addressData.latitude ?? null,
+                    longitude: addressData.longitude ?? null,
+                } : null,
             },
         });
     }
     catch (error) {
         console.error("get order detail error:", error);
-        return res.status(500).json({
-            ok: false,
-            message: "เกิดข้อผิดพลาดในระบบ",
-        });
+        return res.status(500).json({ ok: false, message: "เกิดข้อผิดพลาดในระบบ" });
     }
 });
-exports.router.post("/accept/:id", async (req, res) => {
+exports.router.put("/accept/:id", async (req, res) => {
     try {
-        const order_id = String(req.params.id || "").trim();
-        const rider_id = String(req.body.rider_id || "").trim();
+        const order_id = req.params.id;
+        const rider_id = req.body.rider_id;
         if (!order_id) {
             return res.status(400).json({
                 ok: false,
@@ -539,14 +493,13 @@ exports.router.post("/accept/:id", async (req, res) => {
             "delivery_pickup_completed",
             "delivery_in_progress",
         ];
-        const [riderSnap, pickupSnap, deliverySnap,] = await Promise.all([
+        const [riderSnap, pickupSnap, deliverySnap] = await Promise.all([
             riderRef.get(),
             firebase_1.db.collection("orders")
                 .where("rider_pickup_id", "==", riderRef)
                 .where("status", "in", activeStatuses)
                 .get(),
-            firebase_1.db
-                .collection("orders")
+            firebase_1.db.collection("orders")
                 .where("rider_delivery_id", "==", riderRef)
                 .where("status", "in", activeStatuses)
                 .get(),
@@ -558,12 +511,12 @@ exports.router.post("/accept/:id", async (req, res) => {
             });
         }
         const activeOrderIds = new Set();
-        for (const doc of pickupSnap.docs) {
+        pickupSnap.docs.forEach((doc) => {
             activeOrderIds.add(doc.id);
-        }
-        for (const doc of deliverySnap.docs) {
+        });
+        deliverySnap.docs.forEach((doc) => {
             activeOrderIds.add(doc.id);
-        }
+        });
         const totalActive = activeOrderIds.size;
         if (totalActive >= max_order) {
             return res.status(400).json({
@@ -578,26 +531,23 @@ exports.router.post("/accept/:id", async (req, res) => {
             if (!snap.exists) {
                 throw new Error("ORDER_NOT_FOUND");
             }
-            const orderData = snap.data();
-            const status = orderData.status;
-            if (status === "waiting_pickup") {
-                if (orderData.rider_pickup_id) {
+            const order = snap.data();
+            if (order.status === "waiting_pickup") {
+                if (order.rider_pickup_id) {
                     throw new Error("ORDER_ALREADY_ACCEPTED");
                 }
-                newStatus =
-                    "pickup_in_progress";
+                newStatus = "pickup_in_progress";
                 tx.update(orderRef, {
                     rider_pickup_id: riderRef,
                     status: newStatus,
                     order_datetime: firebase_1.FieldValue.serverTimestamp(),
                 });
             }
-            else if (status === "waiting_delivery") {
-                if (orderData.rider_delivery_id) {
+            else if (order.status === "waiting_delivery") {
+                if (order.rider_delivery_id) {
                     throw new Error("ORDER_ALREADY_ACCEPTED");
                 }
-                newStatus =
-                    "delivery_heading_to_shop";
+                newStatus = "delivery_heading_to_shop";
                 tx.update(orderRef, {
                     rider_delivery_id: riderRef,
                     status: newStatus,
@@ -607,21 +557,15 @@ exports.router.post("/accept/:id", async (req, res) => {
             else {
                 throw new Error("INVALID_ORDER_STATUS");
             }
-            customerId =
-                orderData.customer_id?.id ??
-                    null;
+            customerId = order.customer_id?.id ?? null;
         });
         if (customerId) {
             try {
-                if (newStatus ===
-                    "pickup_in_progress") {
-                    await notification_1.NotificationService
-                        .sendToUser(customerId, "customer", "ไรเดอร์รับงานแล้ว", "ไรเดอร์กำลังไปรับผ้าของคุณ", order_id);
+                if (newStatus === "pickup_in_progress") {
+                    await notification_1.NotificationService.sendToUser(customerId, "customer", "ไรเดอร์รับงานแล้ว", "ไรเดอร์กำลังไปรับผ้าของคุณ", order_id);
                 }
-                else if (newStatus ===
-                    "delivery_heading_to_shop") {
-                    await notification_1.NotificationService
-                        .sendToUser(customerId, "customer", "ไรเดอร์รับงานแล้ว", "ไรเดอร์กำลังไปรับผ้าของคุณที่ร้าน", order_id);
+                if (newStatus === "delivery_heading_to_shop") {
+                    await notification_1.NotificationService.sendToUser(customerId, "customer", "ไรเดอร์รับงานแล้ว", "ไรเดอร์กำลังไปรับผ้าของคุณที่ร้าน", order_id);
                 }
             }
             catch (error) {
@@ -640,22 +584,19 @@ exports.router.post("/accept/:id", async (req, res) => {
     }
     catch (error) {
         console.error("accept rider order error:", error);
-        if (error?.message ===
-            "ORDER_NOT_FOUND") {
+        if (error?.message === "ORDER_NOT_FOUND") {
             return res.status(404).json({
                 ok: false,
                 message: "ไม่พบออเดอร์นี้",
             });
         }
-        if (error?.message ===
-            "ORDER_ALREADY_ACCEPTED") {
+        if (error?.message === "ORDER_ALREADY_ACCEPTED") {
             return res.status(409).json({
                 ok: false,
                 message: "งานนี้ถูกรับไปแล้ว",
             });
         }
-        if (error?.message ===
-            "INVALID_ORDER_STATUS") {
+        if (error?.message === "INVALID_ORDER_STATUS") {
             return res.status(400).json({
                 ok: false,
                 message: "สถานะงานไม่รองรับการรับงาน",

@@ -59,7 +59,143 @@ router.post("/register", upload.single("profile_image"), async (req, res) => {
         message: "email ถูกใช้แล้ว",
       });
     }
+     const [staffPhoneCheck, customerPhoneCheck, storePhoneCheck, riderPhoneCheck] = await Promise.all([
+      db.collection("laundry_staff").where("phone", "==", phone).limit(1).get(),
+      db.collection("customers").where("phone", "==", phone).limit(1).get(),
+      db.collection("stores").where("phone", "==", phone).limit(1).get(),
+      db.collection("riders").where("phone", "==", phone).limit(1).get(),
+    ]);
 
+    if (
+      !staffPhoneCheck.empty ||
+      !customerPhoneCheck.empty ||
+      !storePhoneCheck.empty ||
+      !riderPhoneCheck.empty
+    ) {
+      return res.status(409).json({
+        ok: false,
+        message: "เบอร์โทร ถูกใช้แล้ว",
+      });
+    }
+    const hashed = await bcrypt.hash(password, 10);
+    let imageUrl: string | null = null;
+
+    if (req.file) {
+      const safeName = req.file.originalname.replace(/[^\w.-]/g, "_");
+      const path = `laundry_staff/${Date.now()}_${safeName}`;
+
+      const file = bucket.file(path);
+
+      await file.save(req.file.buffer, {
+        contentType: req.file.mimetype,
+      });
+
+      const [url] = await file.getSignedUrl({
+        action: "read",
+        expires: "2491-01-01",
+      });
+
+      imageUrl = url;
+    }
+    const laundryRef = db.collection("laundry_staff").doc();
+    const staff_id = laundryRef.id;
+
+    const staff: LaundryStaff = {
+      staff_id,
+      store_id: null,
+      username,
+      password: hashed,
+      email,
+      fullname,
+      phone,
+      profile_image: imageUrl,
+      status: "TEMP_CLOSED" as StaffStatus,
+    };
+
+    await laundryRef.set(staff);
+
+    return res.json({
+      ok: true,
+      message: "เพิ่มพนักงานซักอบสำเร็จ",
+      staff_id,
+    });
+
+  } catch (e) {
+    return res.status(500).json({
+      ok: false,
+      message: "Server error",
+    });
+  }
+});router.post("/register", upload.single("profile_image"), async (req, res) => {
+  try {
+    let {
+      username,
+      password,
+      email,
+      fullname,
+      phone,
+    } = req.body;
+
+    username = username?.trim();
+    email = email?.trim();
+
+    if (!username || !password || !email || !fullname || !phone) {
+      return res.status(400).json({
+        ok: false,
+        message: "กรอกข้อมูลไม่ครบ",
+      });
+    }
+
+    const [staffCheck, customerCheck, storeCheck, riderCheck] = await Promise.all([
+      db.collection("laundry_staff").where("username", "==", username).limit(1).get(),
+      db.collection("customers").where("username", "==", username).limit(1).get(),
+      db.collection("stores").where("username", "==", username).limit(1).get(),
+      db.collection("riders").where("username", "==", username).limit(1).get(),
+    ]);
+
+    if (!staffCheck.empty || !customerCheck.empty || !storeCheck.empty || !riderCheck.empty) {
+      return res.status(409).json({
+        ok: false,
+        message: "username นี้ถูกใช้งานแล้ว",
+      });
+    }
+
+    const [staffEmailCheck, customerEmailCheck, storeEmailCheck, riderEmailCheck] = await Promise.all([
+      db.collection("laundry_staff").where("email", "==", email).limit(1).get(),
+      db.collection("customers").where("email", "==", email).limit(1).get(),
+      db.collection("stores").where("email", "==", email).limit(1).get(),
+      db.collection("riders").where("email", "==", email).limit(1).get(),
+    ]);
+
+    if (
+      !staffEmailCheck.empty ||
+      !customerEmailCheck.empty ||
+      !storeEmailCheck.empty ||
+      !riderEmailCheck.empty
+    ) {
+      return res.status(409).json({
+        ok: false,
+        message: "email ถูกใช้แล้ว",
+      });
+    }
+     const [staffPhoneCheck, customerPhoneCheck, storePhoneCheck, riderPhoneCheck] = await Promise.all([
+      db.collection("laundry_staff").where("phone", "==", phone).limit(1).get(),
+      db.collection("customers").where("phone", "==", phone).limit(1).get(),
+      db.collection("stores").where("phone", "==", phone).limit(1).get(),
+      db.collection("riders").where("phone", "==", phone).limit(1).get(),
+    ]);
+
+    if (
+      !staffPhoneCheck.empty ||
+      !customerPhoneCheck.empty ||
+      !storePhoneCheck.empty ||
+      !riderPhoneCheck.empty
+    ) {
+      return res.status(409).json({
+        ok: false,
+        message: "เบอร์โทร ถูกใช้แล้ว",
+      });
+    }
     const hashed = await bcrypt.hash(password, 10);
     let imageUrl: string | null = null;
 
@@ -113,55 +249,61 @@ router.post("/register", upload.single("profile_image"), async (req, res) => {
 router.put("/update/:id", upload.single("profile_image"), async (req, res) => {
   try {
     const staff_id = req.params.id as string;
-    if (!staff_id) {
-      return res.status(400).json({
-        ok: false,
-        message: "ไม่พบ staff_id",
-      });
-    }
+    if (!staff_id) return res.status(400).json({ ok: false, message: "ไม่พบ staff_id" });
 
     const staffRef = db.collection("laundry_staff").doc(staff_id);
-    const snap = await staffRef.get();
+    const staffSnap = await staffRef.get();
+    if (!staffSnap.exists) return res.status(404).json({ ok: false, message: "ไม่พบพนักงาน" });
 
-    if (!snap.exists) {
-      return res.status(404).json({
-        ok: false,
-        message: "ไม่พบพนักงาน",
-      });
-    }
-
-    const { username, password, email, fullname, phone, status } = req.body;
-
+    let { email, fullname, phone } = req.body;
     const updateData: Partial<LaundryStaff> = {};
 
-    if (username !== undefined && username.trim() !== "") {
-      updateData.username = username.trim();
+    
+
+    if (email?.trim()) {
+      email = email.trim().toLowerCase();
+      updateData.email = email;
     }
 
-    if (email !== undefined && email.trim() !== "") {
-      updateData.email = email.trim().toLowerCase();
+    if (fullname?.trim()) updateData.fullname = fullname.trim();
+    if (phone?.trim()) {
+      phone = phone.trim();
+      updateData.phone = phone;
     }
 
-    if (fullname !== undefined && fullname.trim() !== "") {
-      updateData.fullname = fullname.trim();
+  
+    if (email) {
+      const [staff, customer, store, rider] = await Promise.all([
+        db.collection("laundry_staff").where("email", "==", email).limit(10).get(),
+        db.collection("customers").where("email", "==", email).limit(1).get(),
+        db.collection("stores").where("email", "==", email).limit(1).get(),
+        db.collection("riders").where("email", "==", email).limit(1).get(),
+      ]);
+
+      const duplicate = staff.docs.some(doc => doc.id !== staff_id);
+      if (duplicate || !customer.empty || !store.empty || !rider.empty) {
+        return res.status(409).json({ ok: false, message: "email นี้ถูกใช้งานแล้ว" });
+      }
     }
 
-    if (phone !== undefined && phone.trim() !== "") {
-      updateData.phone = phone.trim();
-    }
+    if (phone) {
+      const [staff, customer, store, rider] = await Promise.all([
+        db.collection("laundry_staff").where("phone", "==", phone).limit(10).get(),
+        db.collection("customers").where("phone", "==", phone).limit(1).get(),
+        db.collection("stores").where("phone", "==", phone).limit(1).get(),
+        db.collection("riders").where("phone", "==", phone).limit(1).get(),
+      ]);
 
-    if (status !== undefined && status.trim() !== "") {
-      updateData.status = status;
-    }
-
-    if (password !== undefined && password.trim() !== "") {
-      updateData.password = await bcrypt.hash(password.trim(), 10);
+      const duplicate = staff.docs.some(doc => doc.id !== staff_id);
+      if (duplicate || !customer.empty || !store.empty || !rider.empty) {
+        return res.status(409).json({ ok: false, message: "เบอร์โทรนี้ถูกใช้งานแล้ว" });
+      }
     }
 
     if (req.file) {
       const safeName = req.file.originalname.replace(/[^\w.-]/g, "_");
-      const path = `laundry_staff/${Date.now()}_${safeName}`;
-      const file = bucket.file(path);
+      const filePath = `laundry_staff/${Date.now()}_${safeName}`;
+      const file = bucket.file(filePath);
 
       await file.save(req.file.buffer, {
         contentType: req.file.mimetype,
@@ -169,31 +311,19 @@ router.put("/update/:id", upload.single("profile_image"), async (req, res) => {
       });
 
       await file.makePublic();
-
-      const publicUrl =
-        `https://storage.googleapis.com/${bucket.name}/${file.name}`;
-
-      updateData.profile_image = publicUrl;
+      updateData.profile_image = `https://storage.googleapis.com/${bucket.name}/${file.name}`;
     }
 
     if (Object.keys(updateData).length === 0) {
-      return res.status(400).json({
-        ok: false,
-        message: "ไม่มีข้อมูลที่ต้องการแก้ไข",
-      });
+      return res.status(400).json({ ok: false, message: "ไม่มีข้อมูลที่ต้องการแก้ไข" });
     }
 
     await staffRef.update(updateData);
 
-    return res.json({
-      ok: true,
-      message: "อัปเดตสำเร็จ",
-    });
+    return res.json({ ok: true, message: "อัปเดตสำเร็จ" });
   } catch (err: any) {
-    return res.status(500).json({
-      ok: false,
-      message: err.message,
-    });
+    console.error("Update laundry staff error:", err);
+    return res.status(500).json({ ok: false, message: err.message || "Server error" });
   }
 });
 router.put("/profile/status/:id", async (req, res) => {

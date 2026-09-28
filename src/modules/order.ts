@@ -1,9 +1,10 @@
-import { Timestamp } from "firebase-admin/firestore";
+
 export type OrderStatus =
     "pending_confirmation" // รอยืนยันคำสั่งซื้อ
   | "waiting_pickup"         // รอรับผ้า
   | "pickup_in_progress"     // กำลังรับผ้า
   | "pickup_completed"       // รับผ้าแล้วกำลังไปที่ร้าน
+   | "arrived_at_shop"          // ถึงร้านแล้ว
   | "waiting_payment"        // รอชำระเงิน
   | "payment_completed"      // ชำระเงินแล้ว
   | "waiting_machine"          // รอเครื่องซัก/อบ
@@ -12,7 +13,7 @@ export type OrderStatus =
   | "waiting_dry"             // รออบ
   | "drying"                 // กำลังอบ
   | "waiting_delivery"       //รอส่ง
-  | "delivery_heading_to_shop" // กำลังไปที่ร้าน
+  | "delivery_heading_to_shop" // กำลังไปรับผ้าที่ร้าน
 | "delivery_pickup_completed"    // รับผ้าที่ร้านแล้ว
     | "delivery_in_progress"   // กำลังจัดส่ง
   | "completed"              // ส่งถึงลูกค้าแล้ว

@@ -53,18 +53,6 @@ exports.router.post("/signup", async (req, res) => {
             });
         }
         const u = username.trim();
-        const usernameChecks = await Promise.all([
-            firebase_1.db.collection("stores").where("username", "==", u).limit(1).get(),
-            firebase_1.db.collection("customers").where("username", "==", u).limit(1).get(),
-            firebase_1.db.collection("riders").where("username", "==", u).limit(1).get(),
-            firebase_1.db.collection("laundry_staff").where("username", "==", u).limit(1).get(),
-        ]);
-        if (usernameChecks.some(check => !check.empty)) {
-            return res.status(409).json({
-                ok: false,
-                message: "Username นี้ถูกใช้แล้ว"
-            });
-        }
         const hashed = await bcrypt.hash(password, 12);
         const storeRef = firebase_1.db.collection("stores").doc();
         const payload = {

@@ -46,17 +46,14 @@ router.get("/profile/:customerId", async (req, res) => {
       .json({ ok: false, message: e.message ?? "Server error" });
   }
 });
+
 router.put(
   "/profile/:id",
   upload.single("profile_image"),
   async (req, res) => {
     try {
       const customerId = req.params.id as string;
-
-      const customerRef = db
-        .collection("customers")
-        .doc(customerId);
-
+      const customerRef = db.collection("customers").doc(customerId);
       const customerSnap = await customerRef.get();
 
       if (!customerSnap.exists) {
@@ -66,33 +63,17 @@ router.put(
         });
       }
 
-      const currentData =
-        customerSnap.data() as CustomerData;
-
-      const {
-        fullname,
-        email,
-        phone,
-        gender,
-        birthday,
-      } = req.body;
-
+      const current = customerSnap.data() as CustomerData;
+      const { fullname, email, phone, gender, birthday } = req.body;
       const update: Partial<CustomerData> = {};
 
-      const emailNorm =
-        typeof email === "string"
-          ? email.trim().toLowerCase()
-          : "";
+      const newEmail = typeof email === "string"? email.trim().toLowerCase(): "";
 
-      const currentEmailNorm =
-        String(currentData.email ?? "")
-          .trim()
-          .toLowerCase();
-
+      const oldEmail = String(current.email ?? "").trim().toLowerCase();
       if (
-        currentData.google_id &&
+        current.google_id &&
         email !== undefined &&
-        emailNorm !== currentEmailNorm
+        newEmail !== oldEmail
       ) {
         return res.status(400).json({
           ok: false,
@@ -100,14 +81,10 @@ router.put(
         });
       }
 
-      if (
-        !currentData.google_id &&
-        email !== undefined &&
-        emailNorm
-      ) {
+      if (!current.google_id && email !== undefined && newEmail) {
         const emailSnap = await db
           .collection("customers")
-          .where("email", "==", emailNorm)
+          .where("email", "==", newEmail)
           .limit(1)
           .get();
 
@@ -121,47 +98,42 @@ router.put(
           });
         }
 
-        update.email = emailNorm;
+        update.email = newEmail;
       }
 
       if (phone !== undefined) {
-        const phoneStr =
-          String(phone).trim();
+        const phoneValue = String(phone).trim();
 
-        if (!/^\d{10}$/.test(phoneStr)) {
+        if (!/^\d{10}$/.test(phoneValue)) {
           return res.status(400).json({
             ok: false,
             message: "เบอร์โทรต้องมี 10 หลัก",
           });
         }
 
-        update.phone = phoneStr;
+        update.phone = phoneValue;
       }
 
       if (fullname !== undefined) {
-        update.fullname =
-          String(fullname).trim();
+        update.fullname = String(fullname).trim();
       }
 
       if (gender !== undefined) {
-        update.gender =
-          String(gender).trim();
+        update.gender = String(gender).trim();
       }
 
       if (birthday !== undefined) {
-        update.birthday =
-          birthday ? birthday : null;
+        update.birthday = birthday || null;
       }
 
       if (req.file) {
-        const safeName =
-          (req.file.originalname || "profile")
-            .replace(/[^\w.-]/g, "_");
+        const fileName = (req.file.originalname || "profile")
+          .replace(/[^\w.-]/g, "_");
 
-        const objectPath =
-          `customers/${customerId}/profile_${Date.now()}_${safeName}`;
+        const path =
+          `customers/${customerId}/profile_${Date.now()}_${fileName}`;
 
-        const file = bucket.file(objectPath);
+        const file = bucket.file(path);
 
         await file.save(req.file.buffer, {
           contentType: req.file.mimetype,
@@ -176,55 +148,44 @@ router.put(
 
       await customerRef.update(update);
 
-      const updatedSnap =
-        await customerRef.get();
+      const resultSnap = await customerRef.get();
+      const data = resultSnap.data() as CustomerData;
 
-      const data =
-        updatedSnap.data() as CustomerData;
-
-      const rawBirthday: any = data.birthday;
+      const birthdayValue: any = data.birthday;
 
       const birthdayOut =
-        typeof rawBirthday?.toDate === "function"
-          ? rawBirthday
-              .toDate()
-              .toISOString()
-              .slice(0, 10)
-          : rawBirthday ?? null;
+        typeof birthdayValue?.toDate === "function"
+          ? birthdayValue.toDate().toISOString().slice(0, 10)
+          : birthdayValue ?? null;
 
       return res.json({
         ok: true,
-        customer_id: updatedSnap.id,
+        customer_id: resultSnap.id,
         data: {
-          customer_id: updatedSnap.id,
+          customer_id: resultSnap.id,
           username: data.username ?? "",
           fullname: data.fullname ?? "",
           email: data.email ?? "",
           phone: data.phone ?? "",
           gender: data.gender ?? "",
           birthday: birthdayOut,
-          profile_image:
-            data.profile_image ?? "",
-          wallet_balance:
-            Number(data.wallet_balance ?? 0),
-          google_id:
-            data.google_id ?? "",
+          profile_image: data.profile_image ?? "",
+          wallet_balance: Number(data.wallet_balance ?? 0),
+          google_id: data.google_id ?? "",
         },
       });
-    } catch (e: any) {
-      console.error(
-        "PROFILE UPDATE ERROR:",
-        e,
-      );
+    } catch (error: any) {
+      console.error("PROFILE UPDATE ERROR:", error);
 
       return res.status(500).json({
         ok: false,
-        message:
-          e.message ?? "Server error",
+        message: error.message ?? "Server error",
       });
     }
-  },
+  }
 );
+
+
 router.post("/:id/link-google", async (req, res) => {
   try {
     const customerId = req.params.id as string;
@@ -344,40 +305,26 @@ router.post("/:id/link-google", async (req, res) => {
   }
 });
 
+
 router.post("/addresses/:id", async (req, res) => {
   try {
     const customerId = req.params.id;
+    const customerRef = db.collection("customers").doc(customerId);
 
-    const customerRef = db
-      .collection("customers")
-      .doc(customerId);
-
-    const customerSnap = await customerRef.get();
-
-    if (!customerSnap.exists) {
+    if (!(await customerRef.get()).exists) {
       return res.status(404).json({
         ok: false,
         message: "ไม่พบลูกค้า",
       });
     }
 
-    const {
-      address_name,
-      address_text,
-      latitude,
-      longitude,
-      status,
-    } = req.body;
+    const { address_name, address_text, latitude, longitude, status } = req.body;
 
-    const addressName =
-      typeof address_name === "string"
-        ? address_name.trim()
-        : "";
-
-    const addressText =
-      typeof address_text === "string"
-        ? address_text.trim()
-        : "";
+    const addressName = String(address_name ?? "").trim();
+    const addressText = String(address_text ?? "").trim();
+    const lat = Number(latitude);
+    const lng = Number(longitude);
+    const isDefault = status === true || status === "true";
 
     if (!addressName) {
       return res.status(400).json({
@@ -393,39 +340,24 @@ router.post("/addresses/:id", async (req, res) => {
       });
     }
 
-    const lat = Number(latitude);
-    const lng = Number(longitude);
-
-    if (
-      Number.isNaN(lat) ||
-      lat < -90 ||
-      lat > 90
-    ) {
+    if (Number.isNaN(lat) || lat < -90 || lat > 90) {
       return res.status(400).json({
         ok: false,
         message: "latitude invalid",
       });
     }
 
-    if (
-      Number.isNaN(lng) ||
-      lng < -180 ||
-      lng > 180
-    ) {
+    if (Number.isNaN(lng) || lng < -180 || lng > 180) {
       return res.status(400).json({
         ok: false,
         message: "longitude invalid",
       });
     }
 
-    const isDefault =
-      status === true || status === "true";
-
-    const ref = db
-      .collection("customer_addresses")
-      .doc();
+    const ref = db.collection("customer_addresses").doc();
 
     const dataAddress: CustomerAddress = {
+      address_id: ref.id,
       customer_id: customerRef,
       address_name: addressName,
       address_text: addressText,
@@ -435,7 +367,7 @@ router.post("/addresses/:id", async (req, res) => {
     };
 
     if (isDefault) {
-      const defaultAddressSnap = await db
+      const snap = await db
         .collection("customer_addresses")
         .where("customer_id", "==", customerRef)
         .where("status", "==", true)
@@ -443,14 +375,11 @@ router.post("/addresses/:id", async (req, res) => {
 
       const batch = db.batch();
 
-      defaultAddressSnap.docs.forEach((doc) => {
-        batch.update(doc.ref, {
-          status: false,
-        });
+      snap.docs.forEach((doc) => {
+        batch.update(doc.ref, { status: false });
       });
 
       batch.set(ref, dataAddress);
-
       await batch.commit();
     } else {
       await ref.set(dataAddress);
@@ -461,8 +390,8 @@ router.post("/addresses/:id", async (req, res) => {
       message: "เพิ่มที่อยู่สำเร็จ",
       address_id: ref.id,
     });
-  } catch (e) {
-    console.error("CREATE ADDRESS ERROR:", e);
+  } catch (error) {
+    console.error("CREATE ADDRESS ERROR:", error);
 
     return res.status(500).json({
       ok: false,
@@ -470,6 +399,7 @@ router.post("/addresses/:id", async (req, res) => {
     });
   }
 });
+
 
 
 router.get("/addresses/active/:id", async (req, res) => {
@@ -584,143 +514,106 @@ router.get("/addresses/:id", async (req, res) => {
 });
 
 
+
 router.put("/addresses/update/:id", async (req, res) => {
   try {
     const id = req.params.id;
+    const ref = db.collection("customer_addresses").doc(id);
+    const snap = await ref.get();
 
-    const addressRef = db
-      .collection("customer_addresses")
-      .doc(id);
-
-    const addressSnap = await addressRef.get();
-
-    if (!addressSnap.exists) {
+    if (!snap.exists) {
       return res.status(404).json({
         ok: false,
         message: "Address not found",
       });
     }
 
-    const currentData =
-      addressSnap.data() as CustomerAddress;
-
+    const current = snap.data() as CustomerAddress;
+    const { address_name, address_text, latitude, longitude, status } = req.body;
     const update: Partial<CustomerAddress> = {};
 
-    if (req.body.address_name !== undefined) {
-      const addressName =
-        String(req.body.address_name).trim();
-
-      if (!addressName) {
+    if (address_name !== undefined) {
+      const value = String(address_name).trim();
+      if (!value) {
         return res.status(400).json({
           ok: false,
           message: "address_name required",
         });
       }
-
-      update.address_name = addressName;
+      update.address_name = value;
     }
 
-    if (req.body.address_text !== undefined) {
-      const addressText =
-        String(req.body.address_text).trim();
-
-      if (!addressText) {
+    if (address_text !== undefined) {
+      const value = String(address_text).trim();
+      if (!value) {
         return res.status(400).json({
           ok: false,
           message: "address_text required",
         });
       }
-
-      update.address_text = addressText;
+      update.address_text = value;
     }
 
-    if (req.body.latitude !== undefined) {
-      const lat = Number(req.body.latitude);
-
-      if (
-        Number.isNaN(lat) ||
-        lat < -90 ||
-        lat > 90
-      ) {
+    if (latitude !== undefined) {
+      const value = Number(latitude);
+      if (Number.isNaN(value) || value < -90 || value > 90) {
         return res.status(400).json({
           ok: false,
           message: "latitude invalid",
         });
       }
-
-      update.latitude = lat;
+      update.latitude = value;
     }
 
-    if (req.body.longitude !== undefined) {
-      const lng = Number(req.body.longitude);
-
-      if (
-        Number.isNaN(lng) ||
-        lng < -180 ||
-        lng > 180
-      ) {
+    if (longitude !== undefined) {
+      const value = Number(longitude);
+      if (Number.isNaN(value) || value < -180 || value > 180) {
         return res.status(400).json({
           ok: false,
           message: "longitude invalid",
         });
       }
-
-      update.longitude = lng;
+      update.longitude = value;
     }
 
-    let newStatus: boolean | undefined;
-
-    if (req.body.status !== undefined) {
-      newStatus =
-        req.body.status === true ||
-        req.body.status === "true";
-
-      update.status = newStatus;
+    if (status !== undefined) {
+      update.status = status === true || status === "true";
     }
 
-    if (Object.keys(update).length === 0) {
+    if (!Object.keys(update).length) {
       return res.status(400).json({
         ok: false,
         message: "No data to update",
       });
     }
 
-    if (newStatus === true) {
-      const customerRef =
-        currentData.customer_id;
-
-      const activeSnap = await db
+    if (update.status === true) {
+      const snap = await db
         .collection("customer_addresses")
-        .where("customer_id", "==", customerRef)
+        .where("customer_id", "==", current.customer_id)
         .where("status", "==", true)
         .get();
 
       const batch = db.batch();
 
-      activeSnap.docs.forEach((doc) => {
+      snap.docs.forEach((doc) => {
         if (doc.id !== id) {
-          batch.update(doc.ref, {
-            status: false,
-          });
+          batch.update(doc.ref, { status: false });
         }
       });
 
-      batch.update(addressRef, update);
-
+      batch.update(ref, update);
       await batch.commit();
     } else {
-      await addressRef.update(update);
+      await ref.update(update);
     }
 
     return res.json({
       ok: true,
       message: "อัปเดตที่อยู่สำเร็จ",
     });
-  } catch (e) {
-    console.error(
-      "UPDATE ADDRESS ERROR:",
-      e,
-    );
+  } catch (error) {
+    console.error("UPDATE ADDRESS ERROR:", error);
 
     return res.status(500).json({
       ok: false,
@@ -728,6 +621,8 @@ router.put("/addresses/update/:id", async (req, res) => {
     });
   }
 });
+
+
 router.put("/addresses/status/:id", async (req, res) => {
   try {
     const id = req.params.id;

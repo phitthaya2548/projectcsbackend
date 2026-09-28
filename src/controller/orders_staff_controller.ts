@@ -153,7 +153,7 @@ router.put("/start_wash/:id", async (req, res) => {
 });
 router.get("/historynow/:id", async (req, res) => {
   try {
-    const staff_id = String(req.params.id || "").trim();
+    const staff_id = req.params.id;
 
     if (!staff_id) {
       return res.status(400).json({ ok: false, message: "กรุณาระบุ staff_id" });
@@ -262,125 +262,75 @@ router.get("/historynow/:id", async (req, res) => {
     return res.status(500).json({ ok: false, message: "server error" });
   }
 });
+
 router.put("/update/status/:id", async (req, res) => {
   try {
-    const orderId = String(req.params.id || "").trim();
-    const staff_id = String(req.body.staff_id || "").trim();
-    const status = req.body.status as OrderStatus;
+    const orderId = req.params.id;
+    const { staff_id, status } = req.body as { staff_id: string; status: OrderStatus };
 
-    if (!orderId) {
-      return res.status(400).json({
-        ok: false,
-        message: "กรุณาระบุ order_id",
-      });
-    }
-
-    if (!staff_id) {
-      return res.status(400).json({
-        ok: false,
-        message: "กรุณาระบุ staff_id",
-      });
-    }
-
-    if (!status) {
-      return res.status(400).json({
-        ok: false,
-        message: "กรุณาระบุ status",
-      });
+    if (!orderId || !staff_id || !status) {
+      return res.status(400).json({ ok: false, message: "กรุณาระบุ order_id, staff_id และ status" });
     }
 
     const orderRef = db.collection("orders").doc(orderId);
-
     let customerId: string | null = null;
-    let updatedStatus: OrderStatus | null = null;
 
     await db.runTransaction(async (tx) => {
       const orderSnap = await tx.get(orderRef);
 
       if (!orderSnap.exists) {
-        throw {
-          code: 404,
-          message: "ไม่พบออเดอร์",
-        };
+        throw { code: 404, message: "ไม่พบออเดอร์" };
       }
 
       const order = orderSnap.data() as Order;
 
       if (order.staff_id?.id !== staff_id) {
-        throw {
-          code: 403,
-          message: "คุณไม่ใช่ staff ที่รับงานนี้",
-        };
+        throw { code: 403, message: "คุณไม่ใช่ staff ที่รับงานนี้" };
       }
-
-      const updateData: UpdateData<Order> = {
-        status,
-        order_datetime: FieldValue.serverTimestamp(),
-      };
 
       if (status === "drying") {
         if (order.machine_dryer_id) {
-          const dryerSnap = await tx.get(
-            order.machine_dryer_id
-          );
+          const dryerSnap = await tx.get(order.machine_dryer_id);
 
           if (!dryerSnap.exists) {
-            throw {
-              code: 404,
-              message: "ไม่พบเครื่องอบ",
-            };
+            throw { code: 404, message: "ไม่พบเครื่องอบ" };
           }
 
-          const dryerData =
-            dryerSnap.data() as Machine;
+          const dryer = dryerSnap.data() as Machine;
 
-          if (dryerData.status !== "available") {
-            throw {
-              code: 409,
-              message:
-                "เครื่องอบไม่ว่าง กรุณารอเครื่องซักเสร็จ",
-            };
+          if (dryer.status !== "available") {
+            throw { code: 409, message: "เครื่องอบไม่ว่าง กรุณารอเครื่องอบเสร็จ" };
           }
+
+          tx.update(order.machine_dryer_id, { status: "busy" });
         }
 
         if (order.machine_washer_id) {
-          tx.update(order.machine_washer_id, {
-            status: "available",
-          } as Partial<Machine>);
-        }
-
-        if (order.machine_dryer_id) {
-          tx.update(order.machine_dryer_id, {
-            status: "busy",
-          } as Partial<Machine>);
+          tx.update(order.machine_washer_id, { status: "available" });
         }
       }
 
       if (status === "waiting_delivery") {
         if (order.machine_washer_id) {
-          tx.update(order.machine_washer_id, {
-            status: "available",
-          } as Partial<Machine>);
+          tx.update(order.machine_washer_id, { status: "available" });
         }
 
         if (order.machine_dryer_id) {
-          tx.update(order.machine_dryer_id, {
-            status: "available",
-          } as Partial<Machine>);
+          tx.update(order.machine_dryer_id, { status: "available" });
         }
       }
 
-      tx.update(orderRef, updateData);
+      tx.update(orderRef, {
+        status,
+        order_datetime: FieldValue.serverTimestamp(),
+      });
 
-      customerId =
-        order.customer_id?.id ?? null;
-
-      updatedStatus = status;
+      customerId = order.customer_id?.id ?? null;
     });
 
     if (customerId) {
       try {
-        if (updatedStatus === "drying") {
+        if (status === "drying") {
           await NotificationService.sendToUser(
             customerId,
             "customer",
@@ -390,50 +340,34 @@ router.put("/update/status/:id", async (req, res) => {
           );
         }
 
-        if (updatedStatus === "waiting_delivery") {
+        if (status === "waiting_delivery") {
           await NotificationService.sendToUser(
             customerId,
             "customer",
-            "พนักงานซักอบซักผ้าเสร็จแล้ว",
+            "พนักงานซักอบอบผ้าเสร็จแล้ว",
             "พนักงานซักอบกำลังเตรียมส่งผ้าให้คุณ",
             orderId
           );
         }
       } catch (error) {
-        console.error(
-          "send notification error:",
-          error
-        );
+        console.error("send notification error:", error);
       }
     }
 
     return res.status(200).json({
       ok: true,
       message: "อัปเดตสถานะสำเร็จ",
-      data: {
-        status: updatedStatus,
-      },
+      data: { status },
     });
-  } catch (err: any) {
-    console.error(
-      "update staff order status error:",
-      err
-    );
-
-    if (err?.code) {
-      return res.status(err.code).json({
-        ok: false,
-        message:
-          err.message ?? "เกิดข้อผิดพลาด",
-      });
-    }
-
-    return res.status(500).json({
+  } catch (error: any) {
+    console.error("update staff order status error:", error);
+    return res.status(error?.code ?? 500).json({
       ok: false,
-      message: "server error",
+      message: error?.message ?? "server error",
     });
   }
 });
+
 router.put("/calculate/:id", async (req, res) => {
   try {
     const orderId = req.params.id;
@@ -457,32 +391,25 @@ router.put("/calculate/:id", async (req, res) => {
     }
 
     const allowedStatuses: OrderStatus[] = ["waiting_wash", "waiting_dry", "waiting_payment"];
-
     if (!allowedStatuses.includes(order.status)) {
       return res.status(409).json({ ok: false, message: "สถานะออเดอร์ไม่รองรับการคำนวณราคา" });
     }
 
     if (!order.store_id || !order.customer_id) {
-      return res.status(404).json({
-        ok: false,
-        message: !order.store_id ? "ไม่พบร้านค้า" : "ไม่พบ customer",
-      });
+      return res.status(404).json({ ok: false, message: !order.store_id ? "ไม่พบร้านค้า" : "ไม่พบ customer" });
     }
 
     const storeSnap = await order.store_id.get();
-
     if (!storeSnap.exists) {
       return res.status(404).json({ ok: false, message: "ไม่พบร้านค้า" });
     }
 
-    const storeData = storeSnap.data() as StoreData;
-    const detergentPrice = Number(storeData.detergent_price ?? 0);
+    const store = storeSnap.data() as StoreData;
+    const detergentPrice = Number(store.detergent_price ?? 0);
     const serviceType = order.service_type;
     const detergentOption = order.detergent_option as DETERGENT_OPTIONS;
-
     const needsWasher = serviceType === "wash" || serviceType === "wash_dry";
-    const needsDryer = serviceType === "dry" || serviceType === "wash_dry";
-
+    const needsDryer = serviceType === "dry"
     const effectiveWasherId = washerId || order.machine_washer_id?.id;
     const effectiveDryerId = dryerId || order.machine_dryer_id?.id;
 
@@ -496,7 +423,6 @@ router.put("/calculate/:id", async (req, res) => {
 
     const washerRef = effectiveWasherId ? db.collection("machines").doc(effectiveWasherId) : null;
     const dryerRef = effectiveDryerId ? db.collection("machines").doc(effectiveDryerId) : null;
-
     const [washerSnap, dryerSnap] = await Promise.all([
       washerRef ? washerRef.get() : null,
       dryerRef ? dryerRef.get() : null,
@@ -509,20 +435,25 @@ router.put("/calculate/:id", async (req, res) => {
       if (!washer) return res.status(404).json({ ok: false, message: "ไม่พบเครื่องซัก" });
       if (washer.status !== "available") return res.status(422).json({ ok: false, message: "เครื่องซักไม่ว่าง" });
       if (washer.capacity < weight) return res.status(422).json({ ok: false, message: "เครื่องซักรับน้ำหนักไม่พอ" });
+      if (detergentOption === "detergent"){
+        if (detergentPrice <= 0) return res.status(422).json({ ok: false, message: "ร้านค้าไม่ได้ตั้งราคาผงซักฟอก" });
+      }
+      
     }
 
     if (needsDryer) {
       if (!dryer) return res.status(404).json({ ok: false, message: "ไม่พบเครื่องอบ" });
       if (dryer.status !== "available") return res.status(422).json({ ok: false, message: "เครื่องอบไม่ว่าง" });
       if (dryer.capacity < weight) return res.status(422).json({ ok: false, message: "เครื่องอบรับน้ำหนักไม่พอ" });
+
     }
 
     const servicePrice = Number(washer?.price ?? 0) + Number(dryer?.price ?? 0);
     const detergentFee = needsWasher && detergentOption === "no_detergent" ? detergentPrice : 0;
     const deliveryFee = Number(order.delivery_price ?? 0);
-    const grandTotal = servicePrice + detergentFee + deliveryFee;
+    const totalAmount = servicePrice + detergentFee + deliveryFee;
 
-    if (!Number.isFinite(grandTotal) || grandTotal < 0) {
+    if (!Number.isFinite(totalAmount) || totalAmount < 0) {
       return res.status(400).json({ ok: false, message: "ยอดเงินไม่ถูกต้อง" });
     }
 
@@ -536,14 +467,8 @@ router.put("/calculate/:id", async (req, res) => {
       if (!freshOrderSnap.exists) throw { code: 404, message: "ไม่พบออเดอร์" };
 
       const freshOrder = freshOrderSnap.data() as Order;
-
-      if (freshOrder.staff_id?.id !== staffId) {
-        throw { code: 403, message: "คุณไม่ใช่ staff ที่รับงานนี้" };
-      }
-
-      if (!allowedStatuses.includes(freshOrder.status)) {
-        throw { code: 409, message: "สถานะออเดอร์เปลี่ยนไปแล้ว กรุณาลองใหม่" };
-      }
+      if (freshOrder.staff_id?.id !== staffId) throw { code: 403, message: "คุณไม่ใช่ staff ที่รับงานนี้" };
+      if (!allowedStatuses.includes(freshOrder.status)) throw { code: 409, message: "สถานะออเดอร์เปลี่ยนไปแล้ว กรุณาลองใหม่" };
 
       const customerRef = freshOrder.customer_id;
       const storeRef = freshOrder.store_id;
@@ -551,27 +476,33 @@ router.put("/calculate/:id", async (req, res) => {
       if (!customerRef) throw { code: 404, message: "ไม่พบ customer" };
       if (!storeRef) throw { code: 404, message: "ไม่พบร้านค้า" };
 
-      const [customerSnap, freshStoreSnap, freshWasherSnap, freshDryerSnap] = await Promise.all([
-        tx.get(customerRef),
-        tx.get(storeRef),
-        washerRef ? tx.get(washerRef) : null,
-        dryerRef ? tx.get(dryerRef) : null,
-      ]);
+      const customerSnap = await tx.get(customerRef);
+      const freshStoreSnap = await tx.get(storeRef);
+      const freshWasherSnap = washerRef ? await tx.get(washerRef) : null;
+      const freshDryerSnap = dryerRef ? await tx.get(dryerRef) : null;
+      const washerData = freshWasherSnap?.exists ? (freshWasherSnap.data() as Machine) : null;
+      const dryerData = freshDryerSnap?.exists ? (freshDryerSnap.data() as Machine) : null;
+
+      if(washerData?.status == "maintenance") {
+        return res.status(422).json({ ok: false, message: "เครื่องซักอยู่ระหว่างการซ่อมบำรุง" });
+      }
+      else if(dryerData?.status == "maintenance") {
+        return res.status(422).json({ ok: false, message: "เครื่องอบอยู่ระหว่างการซ่อมบำรุง" });
+      }
 
       if (!customerSnap.exists) throw { code: 404, message: "ไม่พบ customer" };
       if (!freshStoreSnap.exists) throw { code: 404, message: "ไม่พบร้านค้า" };
 
       const wallet = Number(customerSnap.data()?.wallet_balance ?? 0);
-      const canPayNow = wallet >= grandTotal;
-      const nextStatus: OrderStatus = canPayNow
-        ? serviceType === "dry" ? "drying" : "washing"
-        : "waiting_payment";
+      const canPay = wallet >= totalAmount;
+      const nextStatus: OrderStatus = canPay ? serviceType === "dry" ? "drying" : "washing" : "waiting_payment";
 
-      if (canPayNow && washerRef && freshWasherSnap?.data()?.status !== "available") {
+      if (canPay && washerRef && freshWasherSnap?.data()?.status !== "available") {
         throw { code: 409, message: "เครื่องซักถูกใช้งานไปแล้ว" };
       }
+     
 
-      if (canPayNow && dryerRef && freshDryerSnap?.data()?.status !== "available") {
+      if (canPay && dryerRef && freshDryerSnap?.data()?.status !== "available") {
         throw { code: 409, message: "เครื่องอบถูกใช้งานไปแล้ว" };
       }
 
@@ -590,18 +521,18 @@ router.put("/calculate/:id", async (req, res) => {
 
       tx.update(orderRef, updateData);
 
-      if (canPayNow) {
+      if (canPay) {
         if (washerRef) tx.update(washerRef, { status: "busy" });
         if (dryerRef && serviceType === "dry") tx.update(dryerRef, { status: "busy" });
 
-        walletAfter = wallet - grandTotal;
+        walletAfter = wallet - totalAmount;
         tx.update(customerRef, { wallet_balance: walletAfter });
-        tx.update(storeRef, { wallet_balance: FieldValue.increment(grandTotal) });
+        tx.update(storeRef, { wallet_balance: FieldValue.increment(totalAmount) });
       } else {
         walletAfter = wallet;
       }
 
-      paid = canPayNow;
+      paid = canPay;
       finalStatus = nextStatus;
       customerId = customerRef.id;
     });
@@ -626,28 +557,25 @@ router.put("/calculate/:id", async (req, res) => {
       ok: true,
       paid,
       status: finalStatus,
-      message: paid
-        ? "ชำระเงินแล้ว คำนวณราคาสำเร็จ เริ่มดำเนินการได้เลย"
-        : "คำนวณราคาสำเร็จ แต่ยอดเงินในกระเป๋าไม่พอชำระ กรุณาเติมเงิน",
+      message: paid ? "ชำระเงินแล้ว คำนวณราคาสำเร็จ เริ่มดำเนินการได้เลย" : "คำนวณราคาสำเร็จ แต่ยอดเงินในกระเป๋าไม่พอชำระ กรุณาเติมเงิน",
       data: {
         service_price: servicePrice,
         detergent_price: detergentFee,
         delivery_price: deliveryFee,
-        total_amount: grandTotal,
+        total_amount: totalAmount,
         wallet_balance_after: walletAfter,
-        store_wallet_added: paid ? grandTotal : 0,
+        store_wallet_added: paid ? totalAmount : 0,
       },
     });
   } catch (err: any) {
     console.error("calculate order error:", err);
-
-    if (err?.code) {
-      return res.status(err.code).json({ ok: false, message: err.message });
-    }
-
-    return res.status(500).json({ ok: false, message: "server error" });
+    return res.status(err?.code ?? 500).json({
+      ok: false,
+      message: err?.message ?? "server error",
+    });
   }
 });
+
 router.get("/calculate/preview/:id", async (req, res) => {
   try {
     const orderId = req.params.id;
@@ -757,7 +685,7 @@ router.put("/start_paid/:id", async (req, res) => {
 
     const serviceType = order.service_type;
     const needsWasher = serviceType === "wash" || serviceType === "wash_dry";
-    const needsDryer = serviceType === "dry" || serviceType === "wash_dry";
+    const needsDryer = serviceType === "dry";
 
     if (needsWasher && !order.machine_washer_id) {
       return res.status(422).json({ ok: false, message: "ออเดอร์นี้ไม่มีเครื่องซักที่ผูกไว้" });
@@ -768,28 +696,30 @@ router.put("/start_paid/:id", async (req, res) => {
     }
 
     const [washerSnap, dryerSnap] = await Promise.all([
-      order.machine_washer_id ? order.machine_washer_id.get() : null,
-      order.machine_dryer_id ? order.machine_dryer_id.get() : null,
+      order.machine_washer_id?.get() ?? null,
+      order.machine_dryer_id?.get() ?? null,
     ]);
 
-    const washerData = washerSnap?.exists ? washerSnap.data() as Machine : null;
-    const dryerData = dryerSnap?.exists ? dryerSnap.data() as Machine : null;
+    const washer = washerSnap?.exists ? (washerSnap.data() as Machine) : null;
+    const dryer = dryerSnap?.exists ? (dryerSnap.data() as Machine) : null;
 
-    const washerBusy = needsWasher && washerData?.status !== "available";
-    const dryerBusy = serviceType === "dry" && dryerData?.status !== "available";
+    const washerBusy = needsWasher && washer?.status !== "available";
+    const dryerBusy = needsDryer && dryer?.status !== "available";
 
     if (washerBusy || dryerBusy) {
+      const message = washerBusy && dryerBusy
+        ? "เครื่องซักและเครื่องอบยังไม่ว่าง กรุณารอสักครู่"
+        : washerBusy
+          ? `${washer?.name ?? "เครื่องซัก"} ยังไม่ว่าง กรุณารอสักครู่`
+          : `${dryer?.name ?? "เครื่องอบ"} ยังไม่ว่าง กรุณารอสักครู่`;
+
       return res.status(200).json({
         ok: true,
         waiting: true,
-        message: washerBusy && dryerBusy
-          ? "เครื่องซักและเครื่องอบยังไม่ว่าง กรุณารอสักครู่"
-          : washerBusy
-            ? `${washerData?.name ?? "เครื่องซัก"} ยังไม่ว่าง กรุณารอสักครู่`
-            : `${dryerData?.name ?? "เครื่องอบ"} ยังไม่ว่าง กรุณารอสักครู่`,
+        message,
         data: {
-          washer_status: washerData?.status ?? null,
-          dryer_status: dryerData?.status ?? null,
+          washer_status: washer?.status ?? null,
+          dryer_status: dryer?.status ?? null,
         },
       });
     }
@@ -813,17 +743,15 @@ router.put("/start_paid/:id", async (req, res) => {
         throw { code: 409, message: "สถานะออเดอร์เปลี่ยนไปแล้ว กรุณาลองใหม่" };
       }
 
-      const freshWasherSnap =
-        needsWasher && freshOrder.machine_washer_id
-          ? await tx.get(freshOrder.machine_washer_id)
-          : null;
+      const freshWasherSnap = needsWasher && freshOrder.machine_washer_id
+        ? await tx.get(freshOrder.machine_washer_id)
+        : null;
 
-      const freshDryerSnap =
-        needsDryer && freshOrder.machine_dryer_id
-          ? await tx.get(freshOrder.machine_dryer_id)
-          : null;
+      const freshDryerSnap = needsDryer && freshOrder.machine_dryer_id
+        ? await tx.get(freshOrder.machine_dryer_id)
+        : null;
 
-      if (freshWasherSnap && freshWasherSnap.data()?.status !== "available") {
+      if (freshWasherSnap?.data()?.status !== "available" && freshWasherSnap) {
         throw {
           code: 409,
           waiting: true,
@@ -831,11 +759,7 @@ router.put("/start_paid/:id", async (req, res) => {
         };
       }
 
-      if (
-        serviceType === "dry" &&
-        freshDryerSnap &&
-        freshDryerSnap.data()?.status !== "available"
-      ) {
+      if (freshDryerSnap?.data()?.status !== "available" && freshDryerSnap) {
         throw {
           code: 409,
           waiting: true,
@@ -874,14 +798,10 @@ router.put("/start_paid/:id", async (req, res) => {
       });
     }
 
-    if (err?.code) {
-      return res.status(err.code).json({
-        ok: false,
-        message: err.message,
-      });
-    }
-
-    return res.status(500).json({ ok: false, message: "server error" });
+    return res.status(err?.code ?? 500).json({
+      ok: false,
+      message: err?.message ?? "server error",
+    });
   }
 });
 router.get("/detail/:id", async (req, res) => {
@@ -893,69 +813,60 @@ router.get("/detail/:id", async (req, res) => {
       return res.status(404).json({ ok: false, message: "ไม่พบคำสั่งซื้อ" });
     }
 
-    const orderData = orderSnap.data() as Order;
+    const order = orderSnap.data() as Order;
 
     const [customerSnap, addressSnap] = await Promise.all([
-      orderData.customer_id?.get() ?? null,
-      orderData.address_id?.get() ?? null,
+      order.customer_id?.get() ?? null,
+      order.address_id?.get() ?? null,
     ]);
 
     const customerData = customerSnap?.exists ? customerSnap.data() as CustomerData : null;
     const addressData = addressSnap?.exists ? addressSnap.data() as CustomerAddress : null;
 
-    const customer = customerData && customerSnap ? {
-      customer_id: customerSnap.id,
-      username: customerData.username ?? null,
-      fullname: customerData.fullname ?? null,
-      profile_image: customerData.profile_image ?? null,
-      phone: customerData.phone ?? null,
-    } : null;
-
-    const address = addressData ? {
-      address_text: addressData.address_text ?? null,
-    } : null;
-
-    const orderDatetime = orderData.order_datetime
-      ? typeof (orderData.order_datetime as any).toDate === "function"
-        ? (orderData.order_datetime as any).toDate().toISOString()
-        : orderData.order_datetime
+    const customer = customerData && customerSnap
+      ? {
+          customer_id: customerSnap.id,
+          username: customerData.username ?? null,
+          fullname: customerData.fullname ?? null,
+          profile_image: customerData.profile_image ?? null,
+          phone: customerData.phone ?? null,
+        }
       : null;
+
+    const address = addressData
+      ? { address_text: addressData.address_text ?? null }
+      : null;
+
+    const orderDatetime = order.order_datetime?.toDate?.()?.toISOString() ?? null;
 
     return res.status(200).json({
       ok: true,
       data: {
         order_id: orderSnap.id,
-        customer_id: orderData.customer_id?.id ?? null,
-        address_id: orderData.address_id?.id ?? null,
-        store_id: orderData.store_id?.id ?? null,
-        rider_pickup_id: orderData.rider_pickup_id?.id ?? null,
-        rider_delivery_id: orderData.rider_delivery_id?.id ?? null,
-        machine_washer_id: orderData.machine_washer_id?.id ?? null,
-        machine_dryer_id: orderData.machine_dryer_id?.id ?? null,
-        staff_id: orderData.staff_id?.id ?? null,
-
-        service_type: orderData.service_type ?? null,
-        wash_dry_weight: orderData.wash_dry_weight ?? null,
-        service_price: orderData.service_price ?? null,
-        delivery_price: orderData.delivery_price ?? null,
-        detergent_price: orderData.detergent_price ?? null,
-        detergent_option: orderData.detergent_option ?? null,
-
-        before_wash_image: orderData.before_wash_image ?? null,
-        note: orderData.note ?? null,
-        status: orderData.status ?? null,
+        customer_id: order.customer_id?.id ?? null,
+        address_id: order.address_id?.id ?? null,
+        store_id: order.store_id?.id ?? null,
+        rider_pickup_id: order.rider_pickup_id?.id ?? null,
+        rider_delivery_id: order.rider_delivery_id?.id ?? null,
+        machine_washer_id: order.machine_washer_id?.id ?? null,
+        machine_dryer_id: order.machine_dryer_id?.id ?? null,
+        staff_id: order.staff_id?.id ?? null,
+        service_type: order.service_type ?? null,
+        wash_dry_weight: order.wash_dry_weight ?? null,
+        service_price: order.service_price ?? null,
+        delivery_price: order.delivery_price ?? null,
+        detergent_price: order.detergent_price ?? null,
+        detergent_option: order.detergent_option ?? null,
+        before_wash_image: order.before_wash_image ?? null,
+        note: order.note ?? null,
+        status: order.status ?? null,
         order_datetime: orderDatetime,
-
         customer,
         address,
       },
     });
   } catch (error) {
     console.error("get order detail error:", error);
-
-    return res.status(500).json({
-      ok: false,
-      message: "เกิดข้อผิดพลาดในระบบ",
-    });
+    return res.status(500).json({ ok: false, message: "เกิดข้อผิดพลาดในระบบ" });
   }
 });
