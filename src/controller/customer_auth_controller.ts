@@ -323,8 +323,7 @@ router.post("/google", async (req, res) => {
       });
     }
 
-    const decoded =
-      await auth.verifyIdToken(google_id);
+    const decoded = await auth.verifyIdToken(google_id);
 
     const uid = decoded.uid;
     const email = decoded.email;
@@ -338,18 +337,14 @@ router.post("/google", async (req, res) => {
 
     const user = await auth.getUser(uid);
 
-    const displayName =
-      user.displayName ?? null;
+    const displayName = user.displayName ?? null;
 
-    const photoUrl =
-      user.photoURL ?? null;
+    const photoUrl = user.photoURL ?? null;
 
-    const customerDoc =
-      await findCustomerByEmail(email);
+    const customerDoc = await findCustomerByEmail(email);
 
     if (customerDoc) {
-      const data =
-        customerDoc.data() as Partial<CustomerData>;
+      const data = customerDoc.data() as Partial<CustomerData>;
 
       const updateData: Partial<CustomerData> = {
         google_id: uid,
@@ -373,11 +368,9 @@ router.post("/google", async (req, res) => {
 
       await customerDoc.ref.update(updateData);
 
-      const latestSnap =
-        await customerDoc.ref.get();
+      const latestSnap = await customerDoc.ref.get();
 
-      const latestData =
-        latestSnap.data() as Partial<CustomerData>;
+      const latestData = latestSnap.data() as Partial<CustomerData>;
 
       const addressStatus =
         await getCustomerAddressSummary(
