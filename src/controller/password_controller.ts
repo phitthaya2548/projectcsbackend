@@ -13,20 +13,8 @@ function hashOtp(otp: string) {
 }
 
 function validatePasswordStrength(password: string): string | null {
-  if (password.length < 8) {
-    return "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร";
-  }
-  if (!/[a-z]/.test(password)) {
-    return "รหัสผ่านต้องมีตัวพิมพ์เล็กอย่างน้อย 1 ตัว";
-  }
-  if (!/[A-Z]/.test(password)) {
-    return "รหัสผ่านต้องมีตัวพิมพ์ใหญ่อย่างน้อย 1 ตัว";
-  }
-  if (!/[0-9]/.test(password)) {
-    return "รหัสผ่านต้องมีตัวเลขอย่างน้อย 1 ตัว";
-  }
-  if (!/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password)) {
-    return "รหัสผ่านต้องมีอักขระพิเศษอย่างน้อย 1 ตัว (เช่น ! @ # $ %)";
+  if (password.length < 6) {
+    return "รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร";
   }
   return null;
 }
