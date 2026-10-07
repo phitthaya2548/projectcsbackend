@@ -58,7 +58,6 @@ router.post("/forgot_password", async (req, res) => {
 
     const otp = generateOtp(6);
     const otpHash = hashOtp(otp);
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
     const oldSnap = await db
       .collection("password_resets")
@@ -70,7 +69,6 @@ router.post("/forgot_password", async (req, res) => {
     const resetData: PasswordResetData = {
       email: email,
       otp: otpHash,
-      expires_at: expiresAt,
       used: false,
     };
 
@@ -87,13 +85,12 @@ router.post("/forgot_password", async (req, res) => {
         from: `"WashAndDry Support" <${process.env.MAIL_FROM}>`,
         to: email,
         subject: "รหัส OTP สำหรับรีเซ็ตรหัสผ่าน",
-        text: `รหัส OTP ของคุณคือ ${otp} และจะหมดอายุใน 5 นาที`,
+        text: `รหัส OTP ของคุณคือ ${otp}`,
         html: `
     <div style="font-family: sans-serif">
       <h2>รีเซ็ตรหัสผ่าน</h2>
       <p>รหัส OTP ของคุณคือ</p>
       <h1 style="letter-spacing: 4px">${otp}</h1>
-      <p>OTP นี้จะหมดอายุใน 5 นาที</p>
     </div>
   `,
       })
@@ -142,18 +139,6 @@ router.post("/verify_otp", async (req, res) => {
       return res.status(400).json({
         ok: false,
         message: "OTP นี้ถูกใช้งานไปแล้ว",
-      });
-    }
-
-    const expiresAt =
-      resetData.expires_at instanceof Date
-        ? resetData.expires_at
-        : (resetData.expires_at as any).toDate();
-
-    if (new Date() > expiresAt) {
-      return res.status(400).json({
-        ok: false,
-        message: "OTP หมดอายุแล้ว กรุณาขอ OTP ใหม่",
       });
     }
 
@@ -218,18 +203,6 @@ router.post("/reset_password", async (req, res) => {
       return res.status(400).json({
         ok: false,
         message: "OTP นี้ถูกใช้งานไปแล้ว",
-      });
-    }
-
-    const expiresAt =
-      resetData.expires_at instanceof Date
-        ? resetData.expires_at
-        : (resetData.expires_at as any).toDate();
-
-    if (new Date() > expiresAt) {
-      return res.status(400).json({
-        ok: false,
-        message: "OTP หมดอายุแล้ว",
       });
     }
 
