@@ -96,7 +96,7 @@ router.get("/stores/list", async (req, res) => {
   }
 });
 
-// สมัครร้านค้าไรเดอร์
+// สมัครร้านค้าพนักงานรับส่ง
 router.put("/rider/store/:id", async (req, res) => {
   try {
     const riderId = req.params.id;
@@ -117,7 +117,7 @@ router.put("/rider/store/:id", async (req, res) => {
     if (!riderSnap.exists) {
       return res.status(404).json({
         ok: false,
-        message: "ไม่พบไรเดอร์",
+        message: "ไม่พบพนักงานรับส่ง",
       });
     }
 
@@ -655,7 +655,7 @@ router.get("/rider/:id/applied/store", (req, res) => {
     req,
     res,
     "riders",
-    "ไม่พบไรเดอร์"
+    "ไม่พบพนักงานรับส่ง"
   );
 });
 
@@ -738,7 +738,7 @@ router.put("/rider/:id/applied/store", (req, res) => {
     req,
     res,
     "riders",
-    "ไม่พบไรเดอร์"
+    "ไม่พบพนักงานรับส่ง"
   );
 });
 

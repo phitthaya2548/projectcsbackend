@@ -48,20 +48,8 @@ function hashOtp(otp) {
     return crypto_1.default.createHash("sha256").update(otp).digest("hex");
 }
 function validatePasswordStrength(password) {
-    if (password.length < 8) {
-        return "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร";
-    }
-    if (!/[a-z]/.test(password)) {
-        return "รหัสผ่านต้องมีตัวพิมพ์เล็กอย่างน้อย 1 ตัว";
-    }
-    if (!/[A-Z]/.test(password)) {
-        return "รหัสผ่านต้องมีตัวพิมพ์ใหญ่อย่างน้อย 1 ตัว";
-    }
-    if (!/[0-9]/.test(password)) {
-        return "รหัสผ่านต้องมีตัวเลขอย่างน้อย 1 ตัว";
-    }
-    if (!/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password)) {
-        return "รหัสผ่านต้องมีอักขระพิเศษอย่างน้อย 1 ตัว (เช่น ! @ # $ %)";
+    if (password.length < 6) {
+        return "รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร";
     }
     return null;
 }
@@ -97,7 +85,6 @@ exports.router.post("/forgot_password", async (req, res) => {
         }
         const otp = (0, generateOtp_1.default)(6);
         const otpHash = hashOtp(otp);
-        const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
         const oldSnap = await firebase_1.db
             .collection("password_resets")
             .where("email", "==", email)
@@ -106,7 +93,6 @@ exports.router.post("/forgot_password", async (req, res) => {
         const resetData = {
             email: email,
             otp: otpHash,
-            expires_at: expiresAt,
             used: false,
         };
         const resetRef = firebase_1.db.collection("password_resets").doc();
@@ -120,13 +106,12 @@ exports.router.post("/forgot_password", async (req, res) => {
             from: `"WashAndDry Support" <${process.env.MAIL_FROM}>`,
             to: email,
             subject: "รหัส OTP สำหรับรีเซ็ตรหัสผ่าน",
-            text: `รหัส OTP ของคุณคือ ${otp} และจะหมดอายุใน 5 นาที`,
+            text: `รหัส OTP ของคุณคือ ${otp}`,
             html: `
     <div style="font-family: sans-serif">
       <h2>รีเซ็ตรหัสผ่าน</h2>
       <p>รหัส OTP ของคุณคือ</p>
       <h1 style="letter-spacing: 4px">${otp}</h1>
-      <p>OTP นี้จะหมดอายุใน 5 นาที</p>
     </div>
   `,
         })
@@ -169,15 +154,6 @@ exports.router.post("/verify_otp", async (req, res) => {
             return res.status(400).json({
                 ok: false,
                 message: "OTP นี้ถูกใช้งานไปแล้ว",
-            });
-        }
-        const expiresAt = resetData.expires_at instanceof Date
-            ? resetData.expires_at
-            : resetData.expires_at.toDate();
-        if (new Date() > expiresAt) {
-            return res.status(400).json({
-                ok: false,
-                message: "OTP หมดอายุแล้ว กรุณาขอ OTP ใหม่",
             });
         }
         const isMatch = hashOtp(otp) === resetData.otp;
@@ -233,15 +209,6 @@ exports.router.post("/reset_password", async (req, res) => {
             return res.status(400).json({
                 ok: false,
                 message: "OTP นี้ถูกใช้งานไปแล้ว",
-            });
-        }
-        const expiresAt = resetData.expires_at instanceof Date
-            ? resetData.expires_at
-            : resetData.expires_at.toDate();
-        if (new Date() > expiresAt) {
-            return res.status(400).json({
-                ok: false,
-                message: "OTP หมดอายุแล้ว",
             });
         }
         const isMatch = hashOtp(otp) === resetData.otp;

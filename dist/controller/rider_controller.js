@@ -100,7 +100,9 @@ exports.router.post("/register", upload_1.upload.single("profile_image"), async 
             longitude: null,
         };
         await riderDoc.set(rider);
-        return res.status(201).json({
+        // แก้จาก 201 เป็น 200 ให้ตรงกับ pattern ที่ฝั่ง Flutter เช็ค
+        // (res.statusCode == 200 && res.body['ok'] == true)
+        return res.status(200).json({
             ok: true,
             message: "สมัคร Rider สำเร็จ",
             rider_id,

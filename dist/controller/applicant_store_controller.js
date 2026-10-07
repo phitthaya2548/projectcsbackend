@@ -70,7 +70,7 @@ exports.router.get("/stores/list", async (req, res) => {
         });
     }
 });
-// สมัครร้านค้าไรเดอร์
+// สมัครร้านค้าพนักงานรับส่ง
 exports.router.put("/rider/store/:id", async (req, res) => {
     try {
         const riderId = req.params.id;
@@ -87,7 +87,7 @@ exports.router.put("/rider/store/:id", async (req, res) => {
         if (!riderSnap.exists) {
             return res.status(404).json({
                 ok: false,
-                message: "ไม่พบไรเดอร์",
+                message: "ไม่พบพนักงานรับส่ง",
             });
         }
         const riderData = riderSnap.data() ?? {};
@@ -502,7 +502,7 @@ async function getAppliedStore(req, res, collection, notFoundMessage) {
     }
 }
 exports.router.get("/rider/:id/applied/store", (req, res) => {
-    return getAppliedStore(req, res, "riders", "ไม่พบไรเดอร์");
+    return getAppliedStore(req, res, "riders", "ไม่พบพนักงานรับส่ง");
 });
 exports.router.get("/staff/:id/applied/store", (req, res) => {
     return getAppliedStore(req, res, "laundry_staff", "ไม่พบพนักงาน");
@@ -551,7 +551,7 @@ async function editAppliedStore(req, res, collection, notFoundMessage) {
     }
 }
 exports.router.put("/rider/:id/applied/store", (req, res) => {
-    return editAppliedStore(req, res, "riders", "ไม่พบไรเดอร์");
+    return editAppliedStore(req, res, "riders", "ไม่พบพนักงานรับส่ง");
 });
 exports.router.put("/staff/:id/applied/store", (req, res) => {
     return editAppliedStore(req, res, "laundry_staff", "ไม่พบพนักงาน");

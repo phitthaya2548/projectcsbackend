@@ -266,24 +266,39 @@ exports.router.put("/store/accept/:id", async (req, res) => {
         return res.status(500).json({ ok: false, message: "Server error" });
     }
 });
-exports.router.post("/store/cancel/:id", async (req, res) => {
+exports.router.put("/store/cancel/:id", async (req, res) => {
     const orderId = req.params.id;
-    const { store_id, reason } = req.body;
+    const { store_id } = req.body;
     try {
         const orderRef = firebase_1.db.collection("orders").doc(orderId);
         const orderSnap = await orderRef.get();
         if (!orderSnap.exists) {
-            return res.status(404).json({ ok: false, message: "ไม่พบออเดอร์" });
+            return res.status(404).json({
+                ok: false,
+                message: "ไม่พบออเดอร์",
+            });
         }
         const data = orderSnap.data();
         if (store_id && data.store_id?.id !== store_id) {
-            return res.status(403).json({ ok: false, message: "ออเดอร์นี้ไม่ใช่ของร้านค้านี้" });
+            return res.status(403).json({
+                ok: false,
+                message: "ออเดอร์นี้ไม่ใช่ของร้านค้านี้",
+            });
         }
-        const updatedata = {
+        const updateData = {
             status: "cancelled",
             order_datetime: firestore_1.Timestamp.now(),
         };
-        await orderRef.update(updatedata);
+        await orderRef.update(updateData);
+        try {
+            const customerId = data.customer_id?.id;
+            if (customerId) {
+                await notification_1.NotificationService.sendToUser(customerId, "customer", "ร้านค้ายกเลิกออเดอร์ของคุณ", "ร้านค้ายกเลิกออเดอร์ของคุณ กรุณาใช้บริการใหม่", orderId);
+            }
+        }
+        catch (notificationError) {
+            console.error("Error sending cancellation notification:", notificationError);
+        }
         return res.status(200).json({
             ok: true,
             message: "ยกเลิกออเดอร์สำเร็จ",
@@ -293,7 +308,10 @@ exports.router.post("/store/cancel/:id", async (req, res) => {
     }
     catch (error) {
         console.error("Error cancelling order:", error);
-        return res.status(500).json({ ok: false, message: "Server error" });
+        return res.status(500).json({
+            ok: false,
+            message: "Server error",
+        });
     }
 });
 exports.router.get("/store/before/detail/:id", async (req, res) => {

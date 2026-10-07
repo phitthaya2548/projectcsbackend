@@ -55,7 +55,7 @@ exports.router.put("/update/status/:id", upload_1.upload.single("image"), async 
         if (!riderSnap.exists) {
             return res.status(404).json({
                 ok: false,
-                message: "ไม่พบไรเดอร์",
+                message: "ไม่พบพนักงานรับส่ง",
             });
         }
         const orderData = orderSnap.data();
@@ -174,32 +174,32 @@ exports.router.put("/update/status/:id", upload_1.upload.single("image"), async 
         }
         const notificationMap = {
             pickup_completed: {
-                title: "ไรเดอร์รับผ้าเรียบร้อยแล้ว",
-                body: "ไรเดอร์รับผ้าของคุณเรียบร้อยแล้ว กำลังนำไปส่งที่ร้าน",
+                title: "พนักงานรับส่งรับผ้าเรียบร้อยแล้ว",
+                body: "พนักงานรับส่งรับผ้าของคุณเรียบร้อยแล้ว กำลังนำไปส่งที่ร้าน",
             },
             arrived_at_shop: {
-                title: "ไรเดอร์ถึงร้านแล้ว",
-                body: "ไรเดอร์กำลังเอาผ้าของคุณเข้าร้าน",
+                title: "พนักงานรับส่งถึงร้านแล้ว",
+                body: "พนักงานรับส่งกำลังเอาผ้าของคุณเข้าร้าน",
             },
             waiting_wash: {
                 title: "ผ้าของคุณกำลังรอการคำนวณราคา",
                 body: "ผ้าของคุณกำลังรอการคำนวณราคา",
             },
             delivery_heading_to_shop: {
-                title: "ไรเดอร์กำลังไปรับผ้าของคุณที่ร้าน",
+                title: "พนักงานรับส่งกำลังไปรับผ้าของคุณที่ร้าน",
                 body: "",
             },
             delivery_pickup_completed: {
-                title: "ไรเดอร์รับผ้าของคุณเรียบร้อยแล้ว",
-                body: "ไรเดอร์รับผ้าของคุณเรียบร้อยแล้ว กำลังนำไปส่งที่บ้านของคุณ",
+                title: "พนักงานรับส่งรับผ้าของคุณเรียบร้อยแล้ว",
+                body: "พนักงานรับส่งรับผ้าของคุณเรียบร้อยแล้ว กำลังนำไปส่งที่บ้านของคุณ",
             },
             delivery_in_progress: {
-                title: "ไรเดอร์กำลังนำผ้าของคุณไปส่ง",
-                body: "ไรเดอร์กำลังนำผ้าของคุณไปส่งที่อยู่ของคุณ",
+                title: "พนักงานรับส่งกำลังนำผ้าของคุณไปส่ง",
+                body: "พนักงานรับส่งกำลังนำผ้าของคุณไปส่งที่อยู่ของคุณ",
             },
             completed: {
                 title: "ส่งผ้าเรียบร้อยแล้ว",
-                body: "ไรเดอร์ส่งผ้าของคุณเรียบร้อยแล้ว",
+                body: "พนักงานรับส่งส่งผ้าของคุณเรียบร้อยแล้ว",
             },
         };
         const notification = notificationMap[status];
@@ -280,7 +280,7 @@ exports.router.get("/:id", async (req, res) => {
         if (!riderSnap.exists) {
             return res.status(404).json({
                 ok: false,
-                message: "ไม่พบไรเดอร์",
+                message: "ไม่พบพนักงานรับส่ง",
             });
         }
         const activeStatuses = [
@@ -507,7 +507,7 @@ exports.router.put("/accept/:id", async (req, res) => {
         if (!riderSnap.exists) {
             return res.status(404).json({
                 ok: false,
-                message: "ไม่พบไรเดอร์",
+                message: "ไม่พบพนักงานรับส่ง",
             });
         }
         const activeOrderIds = new Set();
@@ -562,10 +562,10 @@ exports.router.put("/accept/:id", async (req, res) => {
         if (customerId) {
             try {
                 if (newStatus === "pickup_in_progress") {
-                    await notification_1.NotificationService.sendToUser(customerId, "customer", "ไรเดอร์รับงานแล้ว", "ไรเดอร์กำลังไปรับผ้าของคุณ", order_id);
+                    await notification_1.NotificationService.sendToUser(customerId, "customer", "พนักงานรับส่งรับงานแล้ว", "พนักงานรับส่งกำลังไปรับผ้าของคุณ", order_id);
                 }
                 if (newStatus === "delivery_heading_to_shop") {
-                    await notification_1.NotificationService.sendToUser(customerId, "customer", "ไรเดอร์รับงานแล้ว", "ไรเดอร์กำลังไปรับผ้าของคุณที่ร้าน", order_id);
+                    await notification_1.NotificationService.sendToUser(customerId, "customer", "พนักงานรับส่งรับงานแล้ว", "พนักงานรับส่งกำลังไปรับผ้าของคุณที่ร้าน", order_id);
                 }
             }
             catch (error) {
