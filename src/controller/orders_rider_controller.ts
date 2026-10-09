@@ -367,6 +367,78 @@ router.put(
   }
 );
 
+router.put("/cancel/:id", async (req, res) => {
+  try {
+    const order_id = req.params.id;
+
+    if (!order_id) {
+      return res.status(400).json({
+        ok: false,
+        message: "กรุณาระบุ order_id",
+      });
+    }
+
+    const orderRef = db.collection("orders").doc(order_id);
+    const orderSnap = await orderRef.get();
+
+    if (!orderSnap.exists) {
+      return res.status(404).json({
+        ok: false,
+        message: "ไม่พบคำสั่งซื้อ",
+      });
+    }
+
+    const orderData = orderSnap.data() as Order;
+
+    if (orderData.status === "cancelled") {
+      return res.status(200).json({
+        ok: true,
+        message: "คำสั่งซื้อถูกยกเลิกแล้ว",
+      });
+    }
+
+    if (orderData.status !== "pickup_in_progress") {
+      return res.status(400).json({
+        ok: false,
+        message: "ยกเลิกได้เฉพาะคำสั่งซื้อที่อยู่ระหว่างรอรับผ้า",
+      });
+    }
+
+    await orderRef.update({
+      status: "cancelled",
+      cancelled_at: FieldValue.serverTimestamp(),
+    });
+
+    try {
+      const customerId = orderData.customer_id?.id;
+
+      if (customerId) {
+        await NotificationService.sendToUser(
+          customerId,
+          "customer",
+          "คำสั่งซื้อถูกยกเลิก",
+          "คำสั่งซื้อของคุณถูกยกเลิก เนื่องจากไม่พบตะกร้าผ้าในที่อยู่ที่ระบุ",
+          order_id
+        );
+      }
+    } catch (e) {
+      console.error("send notification error:", e);
+    }
+
+    return res.status(200).json({
+      ok: true,
+      message: "ยกเลิกคำสั่งซื้อสำเร็จ",
+    });
+  } catch (e) {
+    console.error("cancel order error:", e);
+
+    return res.status(500).json({
+      ok: false,
+      message: "server error",
+    });
+  }
+});
+
 
 router.get("/:id", async (req, res) => {
   try {
@@ -562,6 +634,7 @@ router.get("/store/address/:id", async (req, res) => {
   }
 });
 
+
 router.get("/detail/:id", async (req, res) => {
   try {
     const order_id = req.params.id;
@@ -573,13 +646,34 @@ router.get("/detail/:id", async (req, res) => {
 
     const order = orderSnap.data() as Order;
 
-    const [customerSnap, addressSnap] = await Promise.all([
+    const [customerSnap, addressSnap, pickupRiderSnap, deliveryRiderSnap] = await Promise.all([
       order.customer_id ? order.customer_id.get() : null,
       order.address_id ? order.address_id.get() : null,
+      order.rider_pickup_id ? order.rider_pickup_id.get() : null,
+      order.rider_delivery_id ? order.rider_delivery_id.get() : null,
     ]);
 
     const customerData = customerSnap?.exists ? customerSnap.data() as CustomerData : null;
     const addressData = addressSnap?.exists ? addressSnap.data() as CustomerAddress : null;
+    const pickupRider = pickupRiderSnap?.exists ? pickupRiderSnap.data() as Rider : null;
+    const deliveryRider = deliveryRiderSnap?.exists ? deliveryRiderSnap.data() as Rider : null;
+
+
+    const fromLat = req.query.lat ? Number(req.query.lat) : null;
+    const fromLng = req.query.lng ? Number(req.query.lng) : null;
+    const toLat = addressData?.latitude ?? null
+    ;
+    const toLng = addressData?.longitude ?? null;
+
+    let distanceKm: number | null = null;
+    if (
+      fromLat !== null && Number.isFinite(fromLat) &&
+      fromLng !== null && Number.isFinite(fromLng) &&
+      toLat !== null && toLng !== null
+    ) {
+      const km = DistanceService.haversineKm(fromLat, fromLng, toLat, toLng);
+      distanceKm = Math.round(km * 10) / 10;
+    }
 
     return res.json({
       ok: true,
@@ -590,9 +684,23 @@ router.get("/detail/:id", async (req, res) => {
         detergent_option: order.detergent_option ?? null,
         note: order.note ?? null,
         order_datetime: order.order_datetime?.toDate().toISOString() ?? null,
+        distance_km: distanceKm,
         customer: customerData ? {
           fullname: customerData.fullname ?? null,
           phone: customerData.phone ?? null,
+          profile_image: customerData.profile_image ?? null,
+        } : null,
+        rider_pickup: pickupRider ? {
+          id: order.rider_pickup_id?.id ?? null,
+          fullname: pickupRider.fullname ?? null,
+          phone: pickupRider.phone ?? null,
+          profile_image: pickupRider.profile_image ?? null,
+        } : null,
+        rider_delivery: deliveryRider ? {
+          id: order.rider_delivery_id?.id ?? null,
+          fullname: deliveryRider.fullname ?? null,
+          phone: deliveryRider.phone ?? null,
+          profile_image: deliveryRider.profile_image ?? null,
         } : null,
         address: addressData ? {
           address_text: addressData.address_text ?? null,
