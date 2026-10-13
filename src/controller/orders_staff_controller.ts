@@ -760,7 +760,7 @@ router.put("/start_paid/:id", async (req, res) => {
       ? `${washer?.name ?? "เครื่องซัก"} ยังไม่ว่าง กรุณารอสักครู่`
       : `${dryer?.name ?? "เครื่องอบ"} ยังไม่ว่าง กรุณารอสักครู่`;
 
-  return res.status(200).json({
+  return res.status(409).json({
     ok: false,
     waiting: true,
     message,
