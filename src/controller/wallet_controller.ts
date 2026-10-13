@@ -82,7 +82,7 @@ form.append("log", "true");
         let message = "สลิปไม่ผ่านการตรวจสอบ";
 
         if (errorCode === 1014) {
-          message = "บัญชีผู้รับไม่ตรงกับบัญชีร้าน";
+          message = "บัญชีผู้รับไม่ตรงบัญชีระบบ";
         } else if (errorCode === 1012) {
           message = "สลิปนี้ถูกใช้แล้ว";
         } else if (errorCode === 1013) {

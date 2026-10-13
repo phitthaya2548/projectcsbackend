@@ -66,7 +66,7 @@ exports.router.post("/checkslip", upload.single("file"), async (req, res) => {
             responseData?.success !== true) {
             let message = "สลิปไม่ผ่านการตรวจสอบ";
             if (errorCode === 1014) {
-                message = "บัญชีผู้รับไม่ตรงกับบัญชีร้าน";
+                message = "บัญชีผู้รับไม่ตรงบัญชีระบบ";
             }
             else if (errorCode === 1012) {
                 message = "สลิปนี้ถูกใช้แล้ว";
