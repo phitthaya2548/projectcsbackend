@@ -54,10 +54,13 @@ router.post("/checkslip", upload.single("file"), async (req, res) => {
     const url = `https://api.slipok.com/api/line/apikey/${slipokId}`;
 
     const form = new FormData();
-    form.append("files", file.buffer, {
-      filename: file.originalname || "slip.jpg",
-      contentType: file.mimetype || "image/jpeg",
-    });
+
+form.append("files", file.buffer, {
+  filename: file.originalname || "slip.jpg",
+  contentType: file.mimetype || "image/jpeg",
+});
+
+form.append("log", "true");
 
     const respos = await axios.post(url, form, {
       headers: {

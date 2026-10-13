@@ -50,6 +50,7 @@ exports.router.post("/checkslip", upload.single("file"), async (req, res) => {
             filename: file.originalname || "slip.jpg",
             contentType: file.mimetype || "image/jpeg",
         });
+        form.append("log", "true");
         const respos = await axios_1.default.post(url, form, {
             headers: {
                 "x-authorization": xauth,
