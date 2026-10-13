@@ -823,7 +823,6 @@ router.put("/accept/:id", async (req, res) => {
       "pickup_in_progress",
       "pickup_completed",
       "arrived_at_shop",
-      "store_pickup_in_progress",
       "delivery_heading_to_shop",
       "delivery_pickup_completed",
       "delivery_in_progress",

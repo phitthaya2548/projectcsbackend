@@ -8,9 +8,7 @@ exports.router = (0, express_1.Router)();
 const isBlank = (v) => v == null || String(v).trim() === "";
 exports.router.get("/stores/list", async (req, res) => {
     try {
-        const search = typeof req.query.search === "string"
-            ? req.query.search.trim().toLowerCase()
-            : "";
+        const search = typeof req.query.search === "string" ? req.query.search.trim().toLowerCase() : "";
         const snap = await firebase_1.db
             .collection("stores")
             .where("is_hiring", "==", true)
@@ -93,8 +91,7 @@ exports.router.put("/rider/store/:id", async (req, res) => {
         const riderData = riderSnap.data() ?? {};
         if (riderData.store_id) {
             const currentStoreId = riderData.store_id.id;
-            if (riderData.status === "pending" &&
-                currentStoreId === targetStoreId) {
+            if (riderData.status === "pending" && currentStoreId === targetStoreId) {
                 return res.status(409).json({
                     ok: false,
                     message: "คุณสมัครร้านนี้ไปแล้ว กรุณารอร้านค้ายืนยัน",
@@ -126,10 +123,7 @@ exports.router.put("/rider/store/:id", async (req, res) => {
                 message: "ร้านนี้ปิดรับสมัครพนักงานอยู่ในขณะนี้",
             });
         }
-        await riderRef.update({
-            store_id: storeRef,
-            status: "pending",
-        });
+        await riderRef.update({ store_id: storeRef, status: "pending", });
         return res.json({
             ok: true,
             message: "ส่งคำขอผูกร้านค้าสำเร็จ กรุณารอร้านค้ายืนยัน",
@@ -253,12 +247,6 @@ exports.router.get("/store/:id/applicants", async (req, res) => {
                 .where("status", "==", "pending")
                 .get(),
         ]);
-        const formatDate = (date) => date
-            ? {
-                _seconds: date.seconds,
-                _nanoseconds: date.nanoseconds,
-            }
-            : null;
         const riders = ridersSnap.docs.map((doc) => {
             const data = doc.data();
             return {
@@ -269,7 +257,6 @@ exports.router.get("/store/:id/applicants", async (req, res) => {
                 profile_image: data.profile_image ?? "",
                 vehicle_type: data.vehicle_type ?? "",
                 license_plate: data.license_plate ?? "",
-                applied_at: formatDate(data.updated_at),
                 role: "rider",
             };
         });
@@ -281,7 +268,6 @@ exports.router.get("/store/:id/applicants", async (req, res) => {
                 email: data.email ?? "",
                 phone: data.phone ?? "",
                 profile_image: data.profile_image ?? "",
-                applied_at: formatDate(data.updated_at),
                 role: "laundry_staff",
             };
         });

@@ -851,36 +851,36 @@ exports.router.get("/store/history/:id", async (req, res) => {
         if (snap.empty)
             return res.json({ ok: true, data: [] });
         const data = await Promise.all(snap.docs.map(async (doc) => {
-            const d = doc.data();
-            const customerSnap = d.customer_id ? await d.customer_id.get() : null;
-            const addressSnap = d.address_id ? await d.address_id.get() : null;
+            const order = doc.data();
+            const customerSnap = order.customer_id ? await order.customer_id.get() : null;
+            const addressSnap = order.address_id ? await order.address_id.get() : null;
             const customer = customerSnap?.exists ? customerSnap.data() : null;
             const address = addressSnap?.exists ? addressSnap.data() : null;
             return {
                 order_id: doc.id,
-                customer_id: d.customer_id?.id ?? null,
-                store_id: d.store_id?.id ?? null,
-                address_id: d.address_id?.id ?? null,
-                rider_pickup_id: d.rider_pickup_id?.id ?? null,
-                rider_delivery_id: d.rider_delivery_id?.id ?? null,
-                staff_id: d.staff_id?.id ?? null,
-                service_type: d.service_type ?? null,
-                wash_dry_weight: d.wash_dry_weight ?? 0,
-                service_price: d.service_price ?? 0,
-                delivery_price: d.delivery_price ?? 0,
-                detergent_price: d.detergent_price ?? 0,
-                total_amount: (d.service_price ?? 0) +
-                    (d.delivery_price ?? 0) +
-                    (d.detergent_price ?? 0),
-                detergent_option: d.detergent_option ?? null,
-                before_wash_image: d.before_wash_image ?? "",
-                after_wash_image: d.after_wash_image ?? "",
-                note: d.note ?? null,
-                machine_washer_id: d.machine_washer_id?.id ?? null,
-                machine_dryer_id: d.machine_dryer_id?.id ?? null,
-                status: d.status ?? "waiting_pickup",
-                order_datetime: d.order_datetime
-                    ? { _seconds: d.order_datetime.seconds }
+                customer_id: order.customer_id?.id ?? null,
+                store_id: order.store_id?.id ?? null,
+                address_id: order.address_id?.id ?? null,
+                rider_pickup_id: order.rider_pickup_id?.id ?? null,
+                rider_delivery_id: order.rider_delivery_id?.id ?? null,
+                staff_id: order.staff_id?.id ?? null,
+                service_type: order.service_type ?? null,
+                wash_dry_weight: order.wash_dry_weight ?? 0,
+                service_price: order.service_price ?? 0,
+                delivery_price: order.delivery_price ?? 0,
+                detergent_price: order.detergent_price ?? 0,
+                total_amount: (order.service_price ?? 0) +
+                    (order.delivery_price ?? 0) +
+                    (order.detergent_price ?? 0),
+                detergent_option: order.detergent_option ?? null,
+                before_wash_image: order.before_wash_image ?? "",
+                after_wash_image: order.after_wash_image ?? "",
+                note: order.note ?? null,
+                machine_washer_id: order.machine_washer_id?.id ?? null,
+                machine_dryer_id: order.machine_dryer_id?.id ?? null,
+                status: order.status ?? "waiting_pickup",
+                order_datetime: order.order_datetime
+                    ? { _seconds: order.order_datetime.seconds }
                     : null,
                 customer_fullname: customer?.fullname ?? "-",
                 customer_phone: customer?.phone ?? "-",

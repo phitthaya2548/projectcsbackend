@@ -15,10 +15,7 @@ const isBlank = (v: any) => v == null || String(v).trim() === "";
 
 router.get("/stores/list", async (req, res) => {
   try {
-    const search =
-      typeof req.query.search === "string"
-        ? req.query.search.trim().toLowerCase()
-        : "";
+    const search = typeof req.query.search === "string" ? req.query.search.trim().toLowerCase() : "";
 
     const snap = await db
       .collection("stores")
@@ -126,10 +123,7 @@ router.put("/rider/store/:id", async (req, res) => {
     if (riderData.store_id) {
       const currentStoreId = riderData.store_id.id;
 
-      if (
-        riderData.status === "pending" &&
-        currentStoreId === targetStoreId
-      ) {
+      if (riderData.status === "pending" && currentStoreId === targetStoreId) {
         return res.status(409).json({
           ok: false,
           message: "คุณสมัครร้านนี้ไปแล้ว กรุณารอร้านค้ายืนยัน",
@@ -169,10 +163,7 @@ router.put("/rider/store/:id", async (req, res) => {
       });
     }
 
-    await riderRef.update({
-      store_id: storeRef,
-      status: "pending",
-    });
+    await riderRef.update({store_id: storeRef,status: "pending",});
 
     return res.json({
       ok: true,
@@ -333,16 +324,9 @@ router.get("/store/:id/applicants", async (req, res) => {
         .get(),
     ]);
 
-    const formatDate = (date: any) =>
-      date
-        ? {
-            _seconds: date.seconds,
-            _nanoseconds: date.nanoseconds,
-          }
-        : null;
 
     const riders = ridersSnap.docs.map((doc) => {
-      const data = doc.data();
+      const data = doc.data() as Rider;
 
       return {
         rider_id: doc.id,
@@ -352,13 +336,12 @@ router.get("/store/:id/applicants", async (req, res) => {
         profile_image: data.profile_image ?? "",
         vehicle_type: data.vehicle_type ?? "",
         license_plate: data.license_plate ?? "",
-        applied_at: formatDate(data.updated_at),
         role: "rider",
       };
     });
 
     const staff = staffSnap.docs.map((doc) => {
-      const data = doc.data();
+      const data = doc.data() as LaundryStaff;
 
       return {
         staff_id: doc.id,
@@ -366,7 +349,6 @@ router.get("/store/:id/applicants", async (req, res) => {
         email: data.email ?? "",
         phone: data.phone ?? "",
         profile_image: data.profile_image ?? "",
-        applied_at: formatDate(data.updated_at),
         role: "laundry_staff",
       };
     });
