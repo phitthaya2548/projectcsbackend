@@ -71,7 +71,7 @@ router.post("/checkslip", upload.single("file"), async (req, res) => {
     if (respos.status < 200 || respos.status >= 300) {
       return res.status(respos.status).json({
         ok: false,
-        message: "ตรวจสอบสลิปล้มเหลว",
+        message: "สลิปไม่ถูกต้อง",
         slipok: respos.data,
       });
     }
