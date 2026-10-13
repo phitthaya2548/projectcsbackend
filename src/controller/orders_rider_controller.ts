@@ -38,7 +38,6 @@ router.put(
         "arrived_at_shop",
         "waiting_wash",
         "waiting_dry",
-
         "delivery_pickup_completed",
         "delivery_in_progress",
         "completed",

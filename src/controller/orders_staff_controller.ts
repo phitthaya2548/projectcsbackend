@@ -753,23 +753,23 @@ router.put("/start_paid/:id", async (req, res) => {
     const washerBusy = needsWasher && washer?.status !== "available";
     const dryerBusy = needsDryer && dryer?.status !== "available";
 
-    if (washerBusy || dryerBusy) {
-      const message = washerBusy && dryerBusy
-        ? "เครื่องซักและเครื่องอบยังไม่ว่าง กรุณารอสักครู่"
-        : washerBusy
-          ? `${washer?.name ?? "เครื่องซัก"} ยังไม่ว่าง กรุณารอสักครู่`
-          : `${dryer?.name ?? "เครื่องอบ"} ยังไม่ว่าง กรุณารอสักครู่`;
+   if (washerBusy || dryerBusy) {
+  const message = washerBusy && dryerBusy
+    ? "เครื่องซักและเครื่องอบยังไม่ว่าง กรุณารอสักครู่"
+    : washerBusy
+      ? `${washer?.name ?? "เครื่องซัก"} ยังไม่ว่าง กรุณารอสักครู่`
+      : `${dryer?.name ?? "เครื่องอบ"} ยังไม่ว่าง กรุณารอสักครู่`;
 
-      return res.status(200).json({
-        ok: true,
-        waiting: true,
-        message,
-        data: {
-          washer_status: washer?.status ?? null,
-          dryer_status: dryer?.status ?? null,
-        },
-      });
-    }
+  return res.status(200).json({
+    ok: false,
+    waiting: true,
+    message,
+    data: {
+      washer_status: washer?.status ?? null,
+      dryer_status: dryer?.status ?? null,
+    },
+  });
+}
 
     const nextStatus: OrderStatus = serviceType === "dry" ? "drying" : "washing";
 
