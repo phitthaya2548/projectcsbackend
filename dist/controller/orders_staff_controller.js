@@ -1,4 +1,7 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.router = void 0;
 const express_1 = require("express");
@@ -7,6 +10,12 @@ const haversine_1 = require("../services/haversine");
 const calculateDelivery_1 = require("../services/calculateDelivery");
 const firestore_1 = require("firebase-admin/firestore");
 const notification_1 = require("../services/notification");
+const dayjs_1 = __importDefault(require("dayjs"));
+const utc_1 = __importDefault(require("dayjs/plugin/utc"));
+const timezone_1 = __importDefault(require("dayjs/plugin/timezone"));
+dayjs_1.default.extend(utc_1.default);
+dayjs_1.default.extend(timezone_1.default);
+const TZ = "Asia/Bangkok";
 exports.router = (0, express_1.Router)();
 exports.router.put("/start_wash/:id", async (req, res) => {
     try {
@@ -72,8 +81,8 @@ exports.router.put("/start_wash/:id", async (req, res) => {
             try {
                 const isDry = currentStatus === "waiting_dry";
                 await notification_1.NotificationService.sendToUser(customerId, "customer", "พนักงานซักอบรับงานแล้ว", isDry
-                    ? "พนักงานซักอบกำลังดำเนินการอบผ้าให้คุณ"
-                    : "พนักงานซักอบกำลังดำเนินการซักผ้าให้คุณ", order_id);
+                    ? "พนักงานซักอบได้นำผ้าคุณเข้าคิวอบเรียบร้อยแล้ว"
+                    : "พนักงานซักอบได้นำผ้าคุณเข้าคิวซักเรียบร้อยแล้ว", order_id);
             }
             catch (error) {
                 console.error("send notification error:", error);
@@ -117,6 +126,17 @@ exports.router.get("/historynow/:id", async (req, res) => {
         if (!staffSnap.exists) {
             return res.status(404).json({ ok: false, message: "ไม่พบ staff คนนี้" });
         }
+        const { day, month, year } = req.query;
+        const monthMode = !day && !!month && !!year;
+        const base = month && year
+            ? dayjs_1.default.tz(`${year}-${month}-${day ?? 1} 00:00:00`, "YYYY-M-D HH:mm:ss", TZ)
+            : (0, dayjs_1.default)().tz(TZ);
+        if (!base.isValid()) {
+            return res.status(400).json({ ok: false, message: "วันที่ไม่ถูกต้อง" });
+        }
+        const unit = monthMode ? "month" : "day";
+        const since = firestore_1.Timestamp.fromDate(base.startOf(unit).toDate());
+        const until = firestore_1.Timestamp.fromDate(base.add(1, unit).startOf(unit).toDate());
         const activeStatuses = [
             "waiting_wash",
             "waiting_dry",
@@ -124,17 +144,33 @@ exports.router.get("/historynow/:id", async (req, res) => {
             "payment_completed",
             "washing",
             "drying",
-            "waiting_delivery",
         ];
-        const ordersSnap = await firebase_1.db.collection("orders")
-            .where("staff_id", "==", staffRef)
-            .where("status", "in", activeStatuses)
-            .orderBy("order_datetime", "desc")
-            .get();
-        if (ordersSnap.empty) {
+        const doneStatuses = [
+            "waiting_delivery",
+            "delivery_heading_to_shop",
+            "delivery_pickup_completed",
+            "delivery_in_progress",
+            "completed",
+        ];
+        const [activeSnap, doneSnap] = await Promise.all([
+            firebase_1.db.collection("orders")
+                .where("staff_id", "==", staffRef)
+                .where("status", "in", activeStatuses)
+                .orderBy("order_datetime", "desc")
+                .get(),
+            firebase_1.db.collection("orders")
+                .where("staff_id", "==", staffRef)
+                .where("status", "in", doneStatuses)
+                .where("order_datetime", ">=", since)
+                .where("order_datetime", "<", until)
+                .orderBy("order_datetime", "desc")
+                .get(),
+        ]);
+        const allDocs = activeSnap.docs.concat(doneSnap.docs);
+        if (allDocs.length === 0) {
             return res.status(200).json({ ok: true, data: [] });
         }
-        const orders = await Promise.all(ordersSnap.docs.map(async (doc) => {
+        const orders = await Promise.all(allDocs.map(async (doc) => {
             const order = doc.data();
             const [storeSnap, addressSnap, customerSnap, washerSnap, dryerSnap] = await Promise.all([
                 order.store_id ? order.store_id.get() : Promise.resolve(null),

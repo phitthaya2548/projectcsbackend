@@ -494,18 +494,13 @@ router.get("/:id", async (req, res) => {
     const isDoneMode = req.query.mode === "done";
     const statuses = isDoneMode ? doneStatuses : activeStatuses;
 
-    // ---- ตัวกรองวัน/เดือน/ปี (ใช้เฉพาะ mode=done) ----
-    const TH_OFFSET_HOURS = 7; // Asia/Bangkok
-    const offsetMs = TH_OFFSET_HOURS * 3600 * 1000;
+
+    const offsetMs = 7 * 3600 * 1000;
     const nowTh = new Date(Date.now() + offsetMs);
 
     const day = req.query.day ? parseInt(req.query.day as string, 10) : null;
-    const month = req.query.month
-      ? parseInt(req.query.month as string, 10)
-      : null;
-    const year = req.query.year
-      ? parseInt(req.query.year as string, 10)
-      : nowTh.getUTCFullYear();
+    const month = req.query.month? parseInt(req.query.month as string, 10) : null;
+    const year = req.query.year ? parseInt(req.query.year as string, 10) : nowTh.getUTCFullYear();
 
     let rangeStart: Date | null = null;
     let rangeEnd: Date | null = null;

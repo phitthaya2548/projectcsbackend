@@ -182,8 +182,12 @@ exports.router.put("/update/status/:id", upload_1.upload.single("image"), async 
                 body: "พนักงานรับส่งกำลังเอาผ้าของคุณเข้าร้าน",
             },
             waiting_wash: {
-                title: "ผ้าของคุณกำลังรอการคำนวณราคา",
-                body: "ผ้าของคุณกำลังรอการคำนวณราคา",
+                title: "ผ้าของคุณกำลังรอนำเข้าคิวซัก",
+                body: "ผ้าของคุณกำลังรอนำเข้าคิว",
+            },
+            waiting_dry: {
+                title: "ผ้าของคุณกำลังรอนำเข้าคิวอบ",
+                body: "ผ้าของคุณกำลังรอนำเข้าคิว",
             },
             delivery_heading_to_shop: {
                 title: "พนักงานรับส่งกำลังไปรับผ้าของคุณที่ร้าน",
@@ -348,21 +352,81 @@ exports.router.get("/:id", async (req, res) => {
             "delivery_pickup_completed",
             "delivery_heading_to_shop",
         ];
+        const doneStatuses = [
+            "completed",
+            "cancelled",
+            "waiting_payment",
+            "payment_completed",
+            "waiting_machine",
+            "waiting_wash",
+            "washing",
+            "waiting_dry",
+            "drying",
+        ];
+        const isDoneMode = req.query.mode === "done";
+        const statuses = isDoneMode ? doneStatuses : activeStatuses;
+        const offsetMs = 7 * 3600 * 1000;
+        const nowTh = new Date(Date.now() + offsetMs);
+        const day = req.query.day ? parseInt(req.query.day, 10) : null;
+        const month = req.query.month ? parseInt(req.query.month, 10) : null;
+        const year = req.query.year ? parseInt(req.query.year, 10) : nowTh.getUTCFullYear();
+        let rangeStart = null;
+        let rangeEnd = null;
+        if (isDoneMode && (day !== null || month !== null)) {
+            if (month === null || isNaN(month) || month < 1 || month > 12) {
+                return res.status(400).json({
+                    ok: false,
+                    message: "กรุณาระบุเดือน (month) ให้ถูกต้อง 1-12",
+                });
+            }
+            if (day !== null && (isNaN(day) || day < 1 || day > 31)) {
+                return res.status(400).json({
+                    ok: false,
+                    message: "วัน (day) ไม่ถูกต้อง",
+                });
+            }
+            if (isNaN(year)) {
+                return res.status(400).json({
+                    ok: false,
+                    message: "ปี (year) ไม่ถูกต้อง",
+                });
+            }
+            if (day !== null) {
+                // กรองรายวัน
+                rangeStart = new Date(Date.UTC(year, month - 1, day) - offsetMs);
+                rangeEnd = new Date(Date.UTC(year, month - 1, day + 1) - offsetMs);
+            }
+            else {
+                // กรองรายเดือน
+                rangeStart = new Date(Date.UTC(year, month - 1, 1) - offsetMs);
+                rangeEnd = new Date(Date.UTC(year, month, 1) - offsetMs);
+            }
+        }
         const [pickupSnap, deliverySnap] = await Promise.all([
             firebase_1.db.collection("orders")
                 .where("rider_pickup_id", "==", riderRef)
-                .where("status", "in", activeStatuses)
+                .where("status", "in", statuses)
                 .get(),
             firebase_1.db.collection("orders")
                 .where("rider_delivery_id", "==", riderRef)
-                .where("status", "in", activeStatuses)
+                .where("status", "in", statuses)
                 .get(),
         ]);
-        const orderDocs = pickupSnap.docs;
+        let orderDocs = [...pickupSnap.docs];
         for (const doc of deliverySnap.docs) {
             if (!orderDocs.some((item) => item.id === doc.id)) {
                 orderDocs.push(doc);
             }
+        }
+        // กรองตามวัน/เดือน
+        if (rangeStart && rangeEnd) {
+            orderDocs = orderDocs.filter((doc) => {
+                const dt = doc.data().order_datetime;
+                if (!dt)
+                    return false;
+                const d = dt.toDate();
+                return d >= rangeStart && d < rangeEnd;
+            });
         }
         if (orderDocs.length === 0) {
             return res.status(200).json({

@@ -49,10 +49,10 @@ router.post("/forgot_password", async (req, res) => {
 
     const userDoc = await findUserByEmail(email);
 
-    if (!userDoc) {
-      return res.json({
-        ok: true,
-        message: "หากอีเมลนี้มีอยู่ในระบบ จะมี OTP ถูกส่งไป",
+    if (userDoc === null) {
+      return res.status(404).json({
+        ok: false,
+        message: "ไม่พบอีเมลนี้",
       });
     }
 
@@ -64,10 +64,12 @@ router.post("/forgot_password", async (req, res) => {
       .where("email", "==", email)
       .get();
 
-    await Promise.all(oldSnap.docs.map((doc) => doc.ref.delete()));
+    await Promise.all(
+      oldSnap.docs.map((doc) => doc.ref.delete())
+    );
 
     const resetData: PasswordResetData = {
-      email: email,
+      email,
       otp: otpHash,
       used: false,
     };
@@ -75,35 +77,30 @@ router.post("/forgot_password", async (req, res) => {
     const resetRef = db.collection("password_resets").doc();
     await resetRef.set(resetData);
 
-    res.json({
-      ok: true,
-      message: "หากอีเมลนี้มีอยู่ในระบบ จะมี OTP ถูกส่งไป",
+    await mailer.sendMail({
+      from: `"WashAndDry Support" <${process.env.MAIL_FROM}>`,
+      to: email,
+      subject: "รหัส OTP สำหรับรีเซ็ตรหัสผ่าน",
+      text: `รหัส OTP ของคุณคือ ${otp}`,
+      html: `
+        <div style="font-family: sans-serif">
+          <h2>รีเซ็ตรหัสผ่าน</h2>
+          <p>รหัส OTP ของคุณคือ</p>
+          <h1 style="letter-spacing: 4px">${otp}</h1>
+        </div>
+      `,
     });
 
-    mailer
-      .sendMail({
-        from: `"WashAndDry Support" <${process.env.MAIL_FROM}>`,
-        to: email,
-        subject: "รหัส OTP สำหรับรีเซ็ตรหัสผ่าน",
-        text: `รหัส OTP ของคุณคือ ${otp}`,
-        html: `
-    <div style="font-family: sans-serif">
-      <h2>รีเซ็ตรหัสผ่าน</h2>
-      <p>รหัส OTP ของคุณคือ</p>
-      <h1 style="letter-spacing: 4px">${otp}</h1>
-    </div>
-  `,
-      })
-      .catch((err) => {
-        console.error("send mail failed:", err);
-      });
-
-    return;
+    return res.status(200).json({
+      ok: true,
+      message: "ส่ง OTP ไปยังอีเมลแล้ว",
+    });
   } catch (e) {
     console.error("forgot-password error:", e);
+
     return res.status(500).json({
       ok: false,
-      message: "Server error",
+      message: "ส่งอีเมลไม่สำเร็จ",
     });
   }
 });

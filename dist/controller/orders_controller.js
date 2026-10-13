@@ -814,22 +814,38 @@ exports.router.get("/store/history/:id", async (req, res) => {
             .where("store_id", "==", storeRef)
             .where("status", "in", statusFilter);
         if (day || month || year) {
-            if (!day || !month || !year) {
+            if (!month) {
                 return res.status(400).json({
                     ok: false,
-                    message: "กรุณาระบุ day, month และ year ให้ครบ",
+                    message: "กรุณาระบุ month",
                 });
             }
-            const date = dayjs_1.default.tz(`${year}-${month}-${day} 00:00:00`, "YYYY-M-D HH:mm:ss", TZ);
-            if (!date.isValid()) {
+            const monthNum = Number(month);
+            const yearNum = year ? Number(year) : (0, dayjs_1.default)().tz(TZ).year();
+            const dayNum = day ? Number(day) : 1;
+            if (!Number.isInteger(monthNum) ||
+                monthNum < 1 ||
+                monthNum > 12 ||
+                !Number.isInteger(yearNum) ||
+                !Number.isInteger(dayNum) ||
+                dayNum < 1 ||
+                dayNum > 31) {
                 return res.status(400).json({
                     ok: false,
                     message: "วันที่ไม่ถูกต้อง",
                 });
             }
+            const start = dayjs_1.default.tz(`${yearNum}-${monthNum}-${dayNum} 00:00:00`, "YYYY-M-D HH:mm:ss", TZ);
+            if (!start.isValid() || start.month() + 1 !== monthNum) {
+                return res.status(400).json({
+                    ok: false,
+                    message: "วันที่ไม่ถูกต้อง",
+                });
+            }
+            const end = day ? start.add(1, "day") : start.add(1, "month");
             query = query
-                .where("order_datetime", ">=", firestore_1.Timestamp.fromDate(date.startOf("day").toDate()))
-                .where("order_datetime", "<", firestore_1.Timestamp.fromDate(date.add(1, "day").startOf("day").toDate()));
+                .where("order_datetime", ">=", firestore_1.Timestamp.fromDate(start.toDate()))
+                .where("order_datetime", "<", firestore_1.Timestamp.fromDate(end.toDate()));
         }
         const snap = await query.orderBy("order_datetime", "desc").get();
         if (snap.empty)
