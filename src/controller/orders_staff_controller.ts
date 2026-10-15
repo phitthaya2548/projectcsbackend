@@ -437,7 +437,7 @@ router.put("/calculate/:id", async (req, res) => {
       return res.status(403).json({ ok: false, message: "คุณไม่ใช่ staff ที่รับงานนี้" });
     }
 
-    const allowedStatuses: OrderStatus[] = ["waiting_wash", "waiting_dry", "waiting_payment"];
+    const allowedStatuses: OrderStatus[] = ["waiting_wash", "waiting_dry"];
     if (!allowedStatuses.includes(order.status)) {
       return res.status(409).json({ ok: false, message: "สถานะออเดอร์ไม่รองรับการคำนวณราคา" });
     }

@@ -132,6 +132,7 @@ router.post("/register", upload.single("profile_image"), async (req, res) => {
       message: "Server error",
     });
   }
+
 });
 router.put("/update/:id", upload.single("profile_image"), async (req, res) => {
   try {
@@ -144,8 +145,8 @@ router.put("/update/:id", upload.single("profile_image"), async (req, res) => {
 
     let { email, fullname, phone } = req.body;
     const updateData: Partial<LaundryStaff> = {};
-
-    
+ 
+ 
 
     if (email?.trim()) {
       email = email.trim().toLowerCase();

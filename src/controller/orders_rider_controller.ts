@@ -180,8 +180,8 @@ router.put(
           }
         }
 
-        if (status === "waiting_wash" ||status === "waiting_dry"
-) {
+        if (status === "waiting_wash" || status === "waiting_dry"
+        ) {
           updateData.rider_pickup_id = riderRef;
         }
 
@@ -301,6 +301,42 @@ router.put(
             "send notification error:",
             error
           );
+        }
+      }
+      const staffNotificationMap: Record<string, { title: string; body: string }> = {
+        waiting_wash: {
+          title: "มีผ้ารอซัก",
+          body: "ไรเดอร์นำผ้าเข้าร้านแล้ว รอเข้าคิวซัก",
+        },
+        waiting_dry: {
+          title: "มีผ้ารออบ",
+          body: "มีผ้ารอเข้าคิวอบ",
+        },
+      };
+
+      const staffNotification = staffNotificationMap[status];
+      const storeRef = db.collection("stores").doc(orderData.store_id.id)
+
+      if (storeRef && staffNotification) {
+        try {
+          const staffSnap = await db
+            .collection("staff")
+            .where("store_id", "==", storeRef)
+            .get();
+
+          await Promise.allSettled(
+            staffSnap.docs.map((staffDoc) =>
+              NotificationService.sendToUser(
+                staffDoc.id,
+                "staff",
+                staffNotification.title,
+                staffNotification.body,
+                order_id
+              )
+            )
+          );
+        } catch (error) {
+          console.error("send staff notification error:", error);
         }
       }
 
@@ -499,7 +535,7 @@ router.get("/:id", async (req, res) => {
     const nowTh = new Date(Date.now() + offsetMs);
 
     const day = req.query.day ? parseInt(req.query.day as string, 10) : null;
-    const month = req.query.month? parseInt(req.query.month as string, 10) : null;
+    const month = req.query.month ? parseInt(req.query.month as string, 10) : null;
     const year = req.query.year ? parseInt(req.query.year as string, 10) : nowTh.getUTCFullYear();
 
     let rangeStart: Date | null = null;
@@ -674,9 +710,6 @@ router.get("/:id", async (req, res) => {
 });
 
 
-
-
-
 router.get("/store/address/:id", async (req, res) => {
   try {
     const storeId = req.params.id?.trim();
@@ -742,7 +775,7 @@ router.get("/detail/:id", async (req, res) => {
     const fromLat = req.query.lat ? Number(req.query.lat) : null;
     const fromLng = req.query.lng ? Number(req.query.lng) : null;
     const toLat = addressData?.latitude ?? null
-    ;
+      ;
     const toLng = addressData?.longitude ?? null;
 
     let distanceKm: number | null = null;

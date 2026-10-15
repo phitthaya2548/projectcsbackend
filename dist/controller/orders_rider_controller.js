@@ -215,6 +215,30 @@ exports.router.put("/update/status/:id", upload_1.upload.single("image"), async 
                 console.error("send notification error:", error);
             }
         }
+        const staffNotificationMap = {
+            waiting_wash: {
+                title: "มีผ้ารอซัก",
+                body: "ไรเดอร์นำผ้าเข้าร้านแล้ว รอเข้าคิวซัก",
+            },
+            waiting_dry: {
+                title: "มีผ้ารออบ",
+                body: "มีผ้ารอเข้าคิวอบ",
+            },
+        };
+        const staffNotification = staffNotificationMap[status];
+        const storeRef = firebase_1.db.collection("stores").doc(orderData.store_id.id);
+        if (storeRef && staffNotification) {
+            try {
+                const staffSnap = await firebase_1.db
+                    .collection("staff")
+                    .where("store_id", "==", storeRef)
+                    .get();
+                await Promise.allSettled(staffSnap.docs.map((staffDoc) => notification_1.NotificationService.sendToUser(staffDoc.id, "staff", staffNotification.title, staffNotification.body, order_id)));
+            }
+            catch (error) {
+                console.error("send staff notification error:", error);
+            }
+        }
         return res.status(200).json({
             ok: true,
             message: "อัปเดตสถานะสำเร็จ",

@@ -252,8 +252,19 @@ exports.router.put("/store/accept/:id", async (req, res) => {
         };
         await orderRef.update(updteData);
         if (Storedata?.customer_id) {
-            await notification_1.NotificationService.sendToUser(Storedata.customer_id.id, "customer", "ร้านยืนยันออเดอร์แล้ว", "ร้านยืนยันออเดอร์ของคุณแล้ว รอไรเดอรับงาน", orderId);
+            await notification_1.NotificationService.sendToUser(Storedata.customer_id.id, "customer", "ร้านยืนยันออเดอร์แล้ว", "ร้านยืนยันออเดอร์ของคุณแล้ว รอไรเดอร์รับงาน", orderId).catch((e) => console.error("notify customer failed:", e));
         }
+        const storeRef = firebase_1.db.collection("stores").doc(store_id);
+        const storeSnap = await storeRef.get();
+        if (!storeSnap.exists) {
+            throw new Error(`ไม่เจอร้านค้า`);
+        }
+        const onlineRiders = await firebase_1.db
+            .collection("riders")
+            .where("store_id", "==", storeRef)
+            .where("status", "==", "ONLINE")
+            .get();
+        await Promise.allSettled(onlineRiders.docs.map((riderDoc) => notification_1.NotificationService.sendToUser(riderDoc.id, "rider", "ออเดอร์ใหม่", "มีงานใหม่รอรับ แตะเพื่อดูรายละเอียด", orderId)));
         return res.status(200).json({
             ok: true,
             message: "รับออเดอร์สำเร็จ เปลี่ยนสถานะเป็นรอจัดส่ง",
