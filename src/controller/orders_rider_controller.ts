@@ -320,7 +320,7 @@ router.put(
       if (storeRef && staffNotification) {
         try {
           const staffSnap = await db
-            .collection("staff")
+            .collection("laundry_staff")
             .where("store_id", "==", storeRef)
             .get();
 

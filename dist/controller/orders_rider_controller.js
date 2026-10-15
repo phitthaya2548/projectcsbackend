@@ -230,7 +230,7 @@ exports.router.put("/update/status/:id", upload_1.upload.single("image"), async 
         if (storeRef && staffNotification) {
             try {
                 const staffSnap = await firebase_1.db
-                    .collection("staff")
+                    .collection("laundry_staff")
                     .where("store_id", "==", storeRef)
                     .get();
                 await Promise.allSettled(staffSnap.docs.map((staffDoc) => notification_1.NotificationService.sendToUser(staffDoc.id, "laundry_staff", staffNotification.title, staffNotification.body, order_id)));
