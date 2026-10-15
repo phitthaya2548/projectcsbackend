@@ -4,16 +4,21 @@ import { CustomerData } from "../modules/customer.js";
 
 export const router = Router();
 
+
 router.get("/customers/:id", async (req, res) => {
   try {
     const storeId = req.params.id;
-    const search = String(req.query.q || "").trim().toLowerCase();
+    const search = String(req.query.q || "").toLowerCase().trim();
 
     const storeRef = db.collection("stores").doc(storeId);
+
     const storeSnap = await storeRef.get();
 
     if (!storeSnap.exists) {
-      return res.status(404).json({ ok: false, message: "ไม่พบร้านค้า" });
+      return res.status(404).json({
+        ok: false,
+        message: "ไม่พบร้านค้า",
+      });
     }
 
     const ordersSnap = await db
@@ -21,64 +26,54 @@ router.get("/customers/:id", async (req, res) => {
       .where("store_id", "==", storeRef)
       .get();
 
-    // ใช้ Map โดยใช้ path เป็น key เพื่อกันลูกค้าซ้ำ
-    const customerRefMap = new Map<string, FirebaseFirestore.DocumentReference>();
+    const customerMap = new Map();
 
-    ordersSnap.forEach((order) => {
-      const customerRef = order.data().customer_id as
-        | FirebaseFirestore.DocumentReference
-        | undefined;
+    for (const order of ordersSnap.docs) {
+      const customerRef = order.data().customer_id;
 
-      if (customerRef) {
-        customerRefMap.set(customerRef.path, customerRef);
-      }
-    });
+      if (!customerRef) continue;
 
-    const customerSnaps = await Promise.all(
-      Array.from(customerRefMap.values()).map((ref) => ref.get()),
-    );
+      customerMap.set(customerRef.path, customerRef);
+    }
 
-    let customers = customerSnaps
-      .filter((customer) => customer.exists)
-      .map((customer) => {
-        const data = customer.data() as CustomerData;
+    const customers = await Promise.all(
+      Array.from(customerMap.values()).map(async (ref) => {
+        const snap = await ref.get();
+
+        if (!snap.exists) return null;
+
+        const data = snap.data() as CustomerData;
+
         return {
-          customer_id: customer.id,
+          customer_id: snap.id,
           fullname: data.fullname || "",
           email: data.email || "",
           phone: data.phone || "",
           profile_image: data.profile_image || "",
         };
-      });
+      })
+    );
 
-    // กันข้อมูลซ้ำตามอีเมล (ถ้าไม่มีอีเมลใช้ customer_id)
-    const seen = new Set<string>();
-    customers = customers.filter((c) => {
-      const key = c.email || c.customer_id;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-
-    if (search) {
-      customers = customers.filter(
-        (c) =>
-          c.fullname.toLowerCase().includes(search) ||
-          c.email.toLowerCase().includes(search) ||
-          c.phone.toLowerCase().includes(search),
+    const result = customers
+      .filter((c) => c !== null)
+      .filter((c) =>
+        !search ||
+        c.fullname.toLowerCase().includes(search) ||
+        c.email.toLowerCase().includes(search) ||
+        c.phone.toLowerCase().includes(search)
       );
-    }
 
     return res.json({
       ok: true,
-      count: customers.length,
-      data: customers,
+      count: result.length,
+      data: result,
     });
-  } catch (error: any) {
-    console.error("GET STORE CUSTOMERS ERROR:", error);
+  } catch (error) {
+    console.error(error);
+
     return res.status(500).json({
       ok: false,
-      message: error.message || "Server error",
+      message: "Server error",
     });
   }
 });

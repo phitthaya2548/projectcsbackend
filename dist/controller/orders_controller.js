@@ -980,3 +980,41 @@ exports.router.get("/store/completed/detail/:id", async (req, res) => {
         return res.status(500).json({ error: "Internal server error" });
     }
 });
+exports.router.get("/getcus", async (req, res) => {
+    try {
+        // 1. ดึงข้อมูล customers ทั้งหมด
+        const customerData = await firebase_1.db.collection("customers").get();
+        // 2. นำ customer_id ไปค้นหาใน stores
+        const cusmap = await Promise.all(customerData.docs.map(async (doc) => {
+            const data = doc.data();
+            const cusRef = await firebase_1.db.collection("customers").doc(data.customer_id);
+            const orderData = await firebase_1.db
+                .collection("orders")
+                .where("customer_id", "==", cusRef)
+                .where("status", "==", "completed")
+                .get();
+            const ordercal = await firebase_1.db
+                .collection("orders")
+                .where("customer_id", "==", cusRef)
+                .where("status", "==", "cancelled")
+                .get();
+            return {
+                id: doc.id,
+                fullname: data.fullname,
+                count_com: orderData.size,
+                count_cal: ordercal.size
+            };
+        }));
+        return res.status(200).json({
+            ok: true,
+            customer: cusmap,
+        });
+    }
+    catch (error) {
+        console.error("Error fetching customers:", error);
+        return res.status(500).json({
+            ok: false,
+            message: "Internal server error",
+        });
+    }
+});
