@@ -218,7 +218,7 @@ exports.router.put("/update/status/:id", upload_1.upload.single("image"), async 
         const staffNotificationMap = {
             waiting_wash: {
                 title: "มีผ้ารอซัก",
-                body: "ไรเดอร์นำผ้าเข้าร้านแล้ว รอเข้าคิวซัก",
+                body: "มีผ้ารอเข้าคิวซัก",
             },
             waiting_dry: {
                 title: "มีผ้ารออบ",

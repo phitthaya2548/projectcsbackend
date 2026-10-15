@@ -306,7 +306,7 @@ router.put(
       const staffNotificationMap: Record<string, { title: string; body: string }> = {
         waiting_wash: {
           title: "มีผ้ารอซัก",
-          body: "ไรเดอร์นำผ้าเข้าร้านแล้ว รอเข้าคิวซัก",
+          body: "มีผ้ารอเข้าคิวซัก",
         },
         waiting_dry: {
           title: "มีผ้ารออบ",
