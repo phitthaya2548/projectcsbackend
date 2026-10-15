@@ -243,8 +243,7 @@ exports.router.put("/update/status/:id", async (req, res) => {
             return res.status(400).json({ ok: false, message: "กรุณาระบุ order_id, staff_id และ status" });
         }
         const orderRef = firebase_1.db.collection("orders").doc(orderId);
-        let customerId = null;
-        await firebase_1.db.runTransaction(async (tx) => {
+        const { customerId, storeRef } = await firebase_1.db.runTransaction(async (tx) => {
             const orderSnap = await tx.get(orderRef);
             if (!orderSnap.exists) {
                 throw { code: 404, message: "ไม่พบออเดอร์" };
@@ -281,7 +280,10 @@ exports.router.put("/update/status/:id", async (req, res) => {
                 status,
                 order_datetime: firestore_1.FieldValue.serverTimestamp(),
             });
-            customerId = order.customer_id?.id ?? null;
+            return {
+                customerId: order.customer_id?.id ?? null,
+                storeRef: order.store_id ?? null,
+            };
         });
         if (customerId) {
             try {
@@ -293,7 +295,20 @@ exports.router.put("/update/status/:id", async (req, res) => {
                 }
             }
             catch (error) {
-                console.error("send notification error:", error);
+                console.error("send customer notification error:", error);
+            }
+        }
+        if (status === "waiting_delivery" && storeRef) {
+            try {
+                const onlineRiders = await firebase_1.db
+                    .collection("riders")
+                    .where("store_id", "==", storeRef)
+                    .where("status", "==", "ONLINE")
+                    .get();
+                await Promise.allSettled(onlineRiders.docs.map((riderDoc) => notification_1.NotificationService.sendToUser(riderDoc.id, "rider", "มีงานส่งผ้า", "ผ้าซักอบเสร็จแล้ว รอไรเดอร์ไปส่งให้ลูกค้า", orderId)));
+            }
+            catch (error) {
+                console.error("send rider notification error:", error);
             }
         }
         return res.status(200).json({

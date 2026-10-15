@@ -320,9 +320,8 @@ router.put("/update/status/:id", async (req, res) => {
     }
 
     const orderRef = db.collection("orders").doc(orderId);
-    let customerId: string | null = null;
 
-    await db.runTransaction(async (tx) => {
+    const { customerId, storeRef } = await db.runTransaction(async (tx) => {
       const orderSnap = await tx.get(orderRef);
 
       if (!orderSnap.exists) {
@@ -372,7 +371,10 @@ router.put("/update/status/:id", async (req, res) => {
         order_datetime: FieldValue.serverTimestamp(),
       });
 
-      customerId = order.customer_id?.id ?? null;
+      return {
+        customerId: order.customer_id?.id ?? null,
+        storeRef: order.store_id ?? null,
+      };
     });
 
     if (customerId) {
@@ -397,7 +399,31 @@ router.put("/update/status/:id", async (req, res) => {
           );
         }
       } catch (error) {
-        console.error("send notification error:", error);
+        console.error("send customer notification error:", error);
+      }
+    }
+
+    if (status === "waiting_delivery" && storeRef) {
+      try {
+        const onlineRiders = await db
+          .collection("riders")
+          .where("store_id", "==", storeRef)
+          .where("status", "==", "ONLINE")
+          .get();
+
+        await Promise.allSettled(
+          onlineRiders.docs.map((riderDoc) =>
+            NotificationService.sendToUser(
+              riderDoc.id,
+              "rider",
+              "มีงานส่งผ้า",
+              "ผ้าซักอบเสร็จแล้ว รอไรเดอร์ไปส่งให้ลูกค้า",
+              orderId
+            )
+          )
+        );
+      } catch (error) {
+        console.error("send rider notification error:", error);
       }
     }
 
