@@ -88,7 +88,7 @@ exports.router.put("/rider/store/:id", async (req, res) => {
                 message: "ไม่พบพนักงานรับส่ง",
             });
         }
-        const riderData = riderSnap.data() ?? {};
+        const riderData = riderSnap.data();
         if (riderData.store_id) {
             const currentStoreId = riderData.store_id.id;
             if (riderData.status === "pending" && currentStoreId === targetStoreId) {

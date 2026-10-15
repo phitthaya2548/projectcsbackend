@@ -5,6 +5,7 @@ const express_1 = require("express");
 const firebase_1 = require("../config/firebase");
 const upload_1 = require("../middlewares/upload");
 const haversine_1 = require("../services/haversine");
+const firestore_1 = require("firebase-admin/firestore");
 const notification_1 = require("../services/notification");
 exports.router = (0, express_1.Router)();
 exports.router.put("/update/status/:id", upload_1.upload.single("image"), async (req, res) => {
@@ -324,7 +325,7 @@ exports.router.put("/cancel/:id", async (req, res) => {
         }
         await orderRef.update({
             status: "cancelled",
-            cancelled_at: firebase_1.FieldValue.serverTimestamp(),
+            order_datetime: firestore_1.Timestamp.now(),
         });
         try {
             const customerId = orderData.customer_id?.id;

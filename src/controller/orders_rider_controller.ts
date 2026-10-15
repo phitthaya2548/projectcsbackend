@@ -448,7 +448,7 @@ router.put("/cancel/:id", async (req, res) => {
 
     await orderRef.update({
       status: "cancelled",
-      cancelled_at: FieldValue.serverTimestamp(),
+       order_datetime: Timestamp.now(),
     });
 
     try {

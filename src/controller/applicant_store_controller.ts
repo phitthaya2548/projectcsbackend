@@ -118,7 +118,7 @@ router.put("/rider/store/:id", async (req, res) => {
       });
     }
 
-    const riderData = riderSnap.data() as Rider ?? {};
+    const riderData = riderSnap.data() as Rider;
 
     if (riderData.store_id) {
       const currentStoreId = riderData.store_id.id;
