@@ -322,6 +322,7 @@ router.put(
           const staffSnap = await db
             .collection("laundry_staff")
             .where("store_id", "==", storeRef)
+            .where("status", "==", "ONLINE")
             .get();
 
           await Promise.allSettled(
