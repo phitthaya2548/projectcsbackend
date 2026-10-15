@@ -233,7 +233,7 @@ exports.router.put("/update/status/:id", upload_1.upload.single("image"), async 
                     .collection("staff")
                     .where("store_id", "==", storeRef)
                     .get();
-                await Promise.allSettled(staffSnap.docs.map((staffDoc) => notification_1.NotificationService.sendToUser(staffDoc.id, "staff", staffNotification.title, staffNotification.body, order_id)));
+                await Promise.allSettled(staffSnap.docs.map((staffDoc) => notification_1.NotificationService.sendToUser(staffDoc.id, "laundry_staff", staffNotification.title, staffNotification.body, order_id)));
             }
             catch (error) {
                 console.error("send staff notification error:", error);

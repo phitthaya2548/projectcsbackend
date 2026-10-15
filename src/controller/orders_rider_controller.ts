@@ -328,7 +328,7 @@ router.put(
             staffSnap.docs.map((staffDoc) =>
               NotificationService.sendToUser(
                 staffDoc.id,
-                "staff",
+                "laundry_staff",
                 staffNotification.title,
                 staffNotification.body,
                 order_id
