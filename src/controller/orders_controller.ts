@@ -669,20 +669,21 @@ router.get("/customer/list/:id", async (req, res) => {
       })
     );
 
-    const byStatus = data.reduce((acc, item) => {
-      const status = item.status ?? "unknown";
-      acc[status] = (acc[status] ?? 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
+     const successCount = data.filter(
+      (item) => item.status === "completed"
+    ).length;
+
+    const cancelledCount = data.filter(
+      (item) => item.status === "cancelled"
+    ).length;
 
     return res.json({
       ok: true,
       data,
       summary: {
         total: data.length,
-        success_count: byStatus.completed ?? 0,
-        cancelled_count: byStatus.cancelled ?? 0,
-        by_status: byStatus,
+        success_count: successCount ?? 0,
+        cancelled_count: cancelledCount ?? 0,
       },
     });
 
