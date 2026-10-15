@@ -20,6 +20,12 @@ exports.router.post("/register", upload_1.upload.single("profile_image"), async 
                 message: "กรอกข้อมูลไม่ครบ",
             });
         }
+        if (phone.length < 10 || phone.length > 10) {
+            return res.status(400).json({
+                ok: false,
+                message: "เบอร์โทรไม่ถูกต้อง",
+            });
+        }
         const [staffCheck, customerCheck, storeCheck, riderCheck] = await Promise.all([
             firebase_1.db.collection("laundry_staff").where("username", "==", username).limit(1).get(),
             firebase_1.db.collection("customers").where("username", "==", username).limit(1).get(),

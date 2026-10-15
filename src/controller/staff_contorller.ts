@@ -26,6 +26,12 @@ router.post("/register", upload.single("profile_image"), async (req, res) => {
         message: "กรอกข้อมูลไม่ครบ",
       });
     }
+    if(phone.length < 10 || phone.length > 10){
+      return res.status(400).json({
+        ok: false,
+        message: "เบอร์โทรไม่ถูกต้อง",
+      });
+    }
 
     const [staffCheck, customerCheck, storeCheck, riderCheck] = await Promise.all([
       db.collection("laundry_staff").where("username", "==", username).limit(1).get(),
