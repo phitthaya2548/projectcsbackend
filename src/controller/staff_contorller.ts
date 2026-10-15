@@ -126,125 +126,6 @@ router.post("/register", upload.single("profile_image"), async (req, res) => {
       message: "Server error",
     });
   }
-});router.post("/register", upload.single("profile_image"), async (req, res) => {
-  try {
-    let {
-      username,
-      password,
-      email,
-      fullname,
-      phone,
-    } = req.body;
-
-    username = username?.trim();
-    email = email?.trim();
-
-    if (!username || !password || !email || !fullname || !phone) {
-      return res.status(400).json({
-        ok: false,
-        message: "กรอกข้อมูลไม่ครบ",
-      });
-    }
-
-    const [staffCheck, customerCheck, storeCheck, riderCheck] = await Promise.all([
-      db.collection("laundry_staff").where("username", "==", username).limit(1).get(),
-      db.collection("customers").where("username", "==", username).limit(1).get(),
-      db.collection("stores").where("username", "==", username).limit(1).get(),
-      db.collection("riders").where("username", "==", username).limit(1).get(),
-    ]);
-
-    if (!staffCheck.empty || !customerCheck.empty || !storeCheck.empty || !riderCheck.empty) {
-      return res.status(409).json({
-        ok: false,
-        message: "username นี้ถูกใช้งานแล้ว",
-      });
-    }
-
-    const [staffEmailCheck, customerEmailCheck, storeEmailCheck, riderEmailCheck] = await Promise.all([
-      db.collection("laundry_staff").where("email", "==", email).limit(1).get(),
-      db.collection("customers").where("email", "==", email).limit(1).get(),
-      db.collection("stores").where("email", "==", email).limit(1).get(),
-      db.collection("riders").where("email", "==", email).limit(1).get(),
-    ]);
-
-    if (
-      !staffEmailCheck.empty ||
-      !customerEmailCheck.empty ||
-      !storeEmailCheck.empty ||
-      !riderEmailCheck.empty
-    ) {
-      return res.status(409).json({
-        ok: false,
-        message: "email ถูกใช้แล้ว",
-      });
-    }
-     const [staffPhoneCheck, customerPhoneCheck, storePhoneCheck, riderPhoneCheck] = await Promise.all([
-      db.collection("laundry_staff").where("phone", "==", phone).limit(1).get(),
-      db.collection("customers").where("phone", "==", phone).limit(1).get(),
-      db.collection("stores").where("phone", "==", phone).limit(1).get(),
-      db.collection("riders").where("phone", "==", phone).limit(1).get(),
-    ]);
-
-    if (
-      !staffPhoneCheck.empty ||
-      !customerPhoneCheck.empty ||
-      !storePhoneCheck.empty ||
-      !riderPhoneCheck.empty
-    ) {
-      return res.status(409).json({
-        ok: false,
-        message: "เบอร์โทร ถูกใช้แล้ว",
-      });
-    }
-    const hashed = await bcrypt.hash(password, 10);
-    let imageUrl: string | null = null;
-
-    if (req.file) {
-      const safeName = req.file.originalname.replace(/[^\w.-]/g, "_");
-      const path = `laundry_staff/${Date.now()}_${safeName}`;
-
-      const file = bucket.file(path);
-
-      await file.save(req.file.buffer, {
-        contentType: req.file.mimetype,
-      });
-
-      const [url] = await file.getSignedUrl({
-        action: "read",
-        expires: "2491-01-01",
-      });
-
-      imageUrl = url;
-    }
-    const laundryRef = db.collection("laundry_staff").doc();
-    const staff_id = laundryRef.id;
-
-    const staff: LaundryStaff = {
-      staff_id,
-      store_id: null,
-      username,
-      password: hashed,
-      email,
-      fullname,
-      phone,
-      profile_image: imageUrl,
-      status: "TEMP_CLOSED" as StaffStatus,
-    };
-
-    await laundryRef.set(staff);
-
-    return res.json({
-      ok: true,
-      message: "เพิ่มพนักงานซักอบสำเร็จ",
-      staff_id,
-    });
-
-  } catch (e) {
-    return res.status(500).json({
-      ok: false,
-      message: "Server error",
-    });
-  }
 });
 router.put("/update/:id", upload.single("profile_image"), async (req, res) => {
   try {
@@ -319,6 +200,19 @@ router.put("/update/:id", upload.single("profile_image"), async (req, res) => {
     }
 
     await staffRef.update(updateData);
+
+const updated = (await staffRef.get()).data();
+
+return res.json({
+  ok: true,
+  message: "อัปเดตสำเร็จ",
+  data: {
+    email: updated?.email,
+    fullname: updated?.fullname,
+    phone: updated?.phone,
+    profile_image: updated?.profile_image,
+  },
+});
 
     return res.json({ ok: true, message: "อัปเดตสำเร็จ" });
   } catch (err: any) {
