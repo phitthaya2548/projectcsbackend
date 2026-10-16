@@ -975,3 +975,41 @@ exports.router.get("/store/completed/detail/:id", async (req, res) => {
         return res.status(500).json({ error: "Internal server error" });
     }
 });
+exports.router.get("/testreport", async (req, res) => {
+    try {
+        const staffeSnap = await firebase_1.db
+            .collection("laundry_staff")
+            .get();
+        if (staffeSnap.empty) {
+            return res.status(200).json({
+                ok: true,
+                total: 0,
+                data: [],
+            });
+        }
+        const staff = await Promise.all(staffeSnap.docs.map(async (doc) => {
+            const data = doc.data();
+            const orderSnap = await firebase_1.db
+                .collection("orders")
+                .where("staff_id", "==", doc.ref)
+                .where("status", "==", "completed")
+                .get();
+            return {
+                fullneme: data.fullname,
+                count: orderSnap.size
+            };
+        }));
+        staff.sort((a, b) => b.count - a.count);
+        return res.status(200).json({
+            ok: true,
+            data: staff,
+        });
+    }
+    catch (error) {
+        console.error("TESTREPORT ERROR:", error);
+        return res.status(500).json({
+            ok: false,
+            message: "Server error",
+        });
+    }
+});

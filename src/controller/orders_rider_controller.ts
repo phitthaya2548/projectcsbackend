@@ -992,19 +992,40 @@ router.put("/accept/:id", async (req, res) => {
 
 
 
-// router.get("/testreport/:id", async(req,res)=>{
-//   const storeId = req.params.id;
+router.get("/testreport", async (req, res) => {
+  try {
+    const staffeSnap = await db
+      .collection("laundry_staff")
+      .get();
 
-//   if(!storeId){
-//     console.log(" store null");
-//   }
-//   const staffRef = await db.collection("laundry_staff").doc(storeId);
+    if (staffeSnap.empty) {
+      return res.status(200).json({
+        ok: true,
+        total: 0,
+        data: [],
+      });
+    }
 
-//   const staffSnap = staffRef.get();
-//   if((await staffSnap).exists){
-//     console.log("ไม่มี data");
-//   }
-//   const staff = staffSnap.forEach(doc => {
-    
-//   });
-// })
+    const staff = staffeSnap.docs.map((doc) => {
+      const data = doc.data();
+
+      return {
+        staff_id: doc.id,
+        ...data,
+      };
+    });
+
+    return res.status(200).json({
+      ok: true,
+      total: staff.length,
+      data: staff,
+    });
+  } catch (error) {
+    console.error("TESTREPORT ERROR:", error);
+
+    return res.status(500).json({
+      ok: false,
+      message: "Server error",
+    });
+  }
+});

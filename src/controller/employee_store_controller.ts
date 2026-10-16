@@ -188,7 +188,8 @@ router.get("/report/store/:id", async (req, res) => {
         total_jobs: pickup_jobs + delivery_jobs,
       };
     });
-
+    staffs.sort((a,b) => b.total_jobs-a.total_jobs)
+    riders.sort((a,b) => b.total_jobs-a.total_jobs)
     return res.json({
       ok: true,
       period: {

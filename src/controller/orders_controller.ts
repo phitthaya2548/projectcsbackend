@@ -13,6 +13,7 @@ import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 import timezone from "dayjs/plugin/timezone";
 import { StoreData } from "../modules/store";
+import { count } from "node:console";
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -1253,3 +1254,45 @@ router.get("/store/completed/detail/:id", async (req, res) => {
   }
 });
 
+router.get("/testreport", async (req, res) => {
+  try {
+    const staffeSnap = await db
+      .collection("laundry_staff")
+      .get();
+
+    if (staffeSnap.empty) {
+      return res.status(200).json({
+        ok: true,
+        total: 0,
+        data: [],
+      });
+    }
+
+    const staff = await Promise.all( staffeSnap.docs.map(async(doc) => {
+      const data = doc.data() as LaundryStaff;
+
+      const orderSnap = await db
+      .collection("orders")
+      .where("staff_id", "==", doc.ref)
+      .where("status", "==", "completed")
+      .get();
+      
+      return {
+        fullneme:data.fullname,
+        count:orderSnap.size
+      };
+    }));
+staff.sort((a, b) => b.count - a.count);
+    return res.status(200).json({
+      ok: true,
+      data: staff,
+    });
+  } catch (error) {
+    console.error("TESTREPORT ERROR:", error);
+
+    return res.status(500).json({
+      ok: false,
+      message: "Server error",
+    });
+  }
+});
