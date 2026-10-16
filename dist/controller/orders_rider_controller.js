@@ -1,4 +1,7 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.router = void 0;
 const express_1 = require("express");
@@ -7,6 +10,8 @@ const upload_1 = require("../middlewares/upload");
 const haversine_1 = require("../services/haversine");
 const firestore_1 = require("firebase-admin/firestore");
 const notification_1 = require("../services/notification");
+const dayjs_1 = __importDefault(require("dayjs"));
+const TZ = "Asia/Bangkok";
 exports.router = (0, express_1.Router)();
 exports.router.put("/update/status/:id", upload_1.upload.single("image"), async (req, res) => {
     let uploadedFilePath = null;
@@ -362,8 +367,7 @@ exports.router.get("/:id", async (req, res) => {
         const riderLng = parseFloat(req.query.lng);
         const hasRiderLocation = !isNaN(riderLat) && !isNaN(riderLng);
         const riderRef = firebase_1.db.collection("riders").doc(rider_id);
-        const riderSnap = await riderRef.get();
-        if (!riderSnap.exists) {
+        if (!(await riderRef.get()).exists) {
             return res.status(404).json({
                 ok: false,
                 message: "ไม่พบพนักงานรับส่ง",
@@ -391,42 +395,38 @@ exports.router.get("/:id", async (req, res) => {
         ];
         const isDoneMode = req.query.mode === "done";
         const statuses = isDoneMode ? doneStatuses : activeStatuses;
-        const offsetMs = 7 * 3600 * 1000;
-        const nowTh = new Date(Date.now() + offsetMs);
-        const day = req.query.day ? parseInt(req.query.day, 10) : null;
-        const month = req.query.month ? parseInt(req.query.month, 10) : null;
-        const year = req.query.year ? parseInt(req.query.year, 10) : nowTh.getUTCFullYear();
-        let rangeStart = null;
-        let rangeEnd = null;
-        if (isDoneMode && (day !== null || month !== null)) {
-            if (month === null || isNaN(month) || month < 1 || month > 12) {
+        const { day, month, year } = req.query;
+        let start = null;
+        let end = null;
+        if (isDoneMode && (day || month)) {
+            if (!month) {
                 return res.status(400).json({
                     ok: false,
                     message: "กรุณาระบุเดือน (month) ให้ถูกต้อง 1-12",
                 });
             }
-            if (day !== null && (isNaN(day) || day < 1 || day > 31)) {
+            const monthNum = Number(month);
+            const yearNum = year ? Number(year) : (0, dayjs_1.default)().tz(TZ).year();
+            const dayNum = day ? Number(day) : 1;
+            if (!Number.isInteger(monthNum) ||
+                monthNum < 1 ||
+                monthNum > 12 ||
+                !Number.isInteger(yearNum) ||
+                !Number.isInteger(dayNum) ||
+                dayNum < 1 ||
+                dayNum > 31) {
                 return res.status(400).json({
                     ok: false,
-                    message: "วัน (day) ไม่ถูกต้อง",
+                    message: "วันที่ไม่ถูกต้อง",
                 });
             }
-            if (isNaN(year)) {
-                return res.status(400).json({
-                    ok: false,
-                    message: "ปี (year) ไม่ถูกต้อง",
-                });
+            const base = dayjs_1.default.tz(`${yearNum}-${monthNum}-${dayNum}`, "YYYY-M-D", TZ);
+            if (!base.isValid() || base.month() + 1 !== monthNum) {
+                return res.status(400).json({ ok: false, message: "วันที่ไม่ถูกต้อง" });
             }
-            if (day !== null) {
-                // กรองรายวัน
-                rangeStart = new Date(Date.UTC(year, month - 1, day) - offsetMs);
-                rangeEnd = new Date(Date.UTC(year, month - 1, day + 1) - offsetMs);
-            }
-            else {
-                // กรองรายเดือน
-                rangeStart = new Date(Date.UTC(year, month - 1, 1) - offsetMs);
-                rangeEnd = new Date(Date.UTC(year, month, 1) - offsetMs);
-            }
+            const unit = day ? "day" : "month";
+            start = base.startOf(unit);
+            end = start.add(1, unit);
         }
         const [pickupSnap, deliverySnap] = await Promise.all([
             firebase_1.db.collection("orders")
@@ -438,14 +438,12 @@ exports.router.get("/:id", async (req, res) => {
                 .where("status", "in", statuses)
                 .get(),
         ]);
-        let orderDocs = [...pickupSnap.docs];
-        for (const doc of deliverySnap.docs) {
-            if (!orderDocs.some((item) => item.id === doc.id)) {
-                orderDocs.push(doc);
-            }
-        }
-        // กรองตามวัน/เดือน
-        if (rangeStart && rangeEnd) {
+        const orderMap = new Map();
+        [...pickupSnap.docs, ...deliverySnap.docs].forEach((doc) => orderMap.set(doc.id, doc));
+        let orderDocs = [...orderMap.values()];
+        if (start && end) {
+            const rangeStart = start.toDate();
+            const rangeEnd = end.toDate();
             orderDocs = orderDocs.filter((doc) => {
                 const dt = doc.data().order_datetime;
                 if (!dt)
@@ -455,75 +453,57 @@ exports.router.get("/:id", async (req, res) => {
             });
         }
         if (orderDocs.length === 0) {
-            return res.status(200).json({
-                ok: true,
-                data: [],
-            });
+            return res.status(200).json({ ok: true, data: [] });
         }
         const orders = await Promise.all(orderDocs.map(async (orderDoc) => {
-            const orderData = orderDoc.data();
-            const addressSnap = orderData.address_id
-                ? await orderData.address_id.get()
+            const order = orderDoc.data();
+            const [addressSnap, customerSnap] = await Promise.all([
+                order.address_id ? order.address_id.get() : null,
+                order.customer_id ? order.customer_id.get() : null,
+            ]);
+            const address = addressSnap?.exists
+                ? addressSnap.data()
                 : null;
-            const customerSnap = orderData.customer_id
-                ? await orderData.customer_id.get()
+            const customerData = customerSnap?.exists
+                ? customerSnap.data()
                 : null;
-            let addressText = null;
-            let addressLat = null;
-            let addressLng = null;
-            if (addressSnap?.exists) {
-                const addressData = addressSnap.data();
-                addressText = addressData.address_text ?? null;
-                addressLat = addressData.latitude ?? null;
-                addressLng = addressData.longitude ?? null;
-            }
-            let customer = null;
-            if (customerSnap?.exists) {
-                const customerData = customerSnap.data();
-                customer = {
-                    id: customerSnap.id,
-                    name: customerData.fullname ?? null,
-                    phone: customerData.phone ?? null,
-                    profile_image: customerData.profile_image ?? null,
-                };
-            }
+            const addressLat = address?.latitude ?? null;
+            const addressLng = address?.longitude ?? null;
             let distanceKm = null;
-            if (hasRiderLocation &&
-                addressLat !== null &&
-                addressLng !== null) {
+            if (hasRiderLocation && addressLat !== null && addressLng !== null) {
                 const distance = haversine_1.DistanceService.haversineKm(riderLat, riderLng, Number(addressLat), Number(addressLng));
                 if (Number.isFinite(distance)) {
                     distanceKm = Number(distance.toFixed(1));
                 }
             }
-            let orderDatetime = null;
-            if (orderData.order_datetime) {
-                orderDatetime = orderData.order_datetime
-                    .toDate()
-                    .toISOString();
-            }
             return {
                 id: orderDoc.id,
-                order_number: orderData.order_id ?? null,
-                status: orderData.status ?? null,
-                service_type: orderData.service_type ?? null,
+                order_number: order.order_id ?? null,
+                status: order.status ?? null,
+                service_type: order.service_type ?? null,
                 distance_km: distanceKm,
-                note: orderData.note ?? null,
-                before_wash_image: orderData.before_wash_image ?? null,
-                after_wash_image: orderData.after_wash_image ?? null,
-                rider_pickup_id: orderData.rider_pickup_id?.id ?? null,
-                rider_delivery_id: orderData.rider_delivery_id?.id ?? null,
+                note: order.note ?? null,
+                before_wash_image: order.before_wash_image ?? null,
+                after_wash_image: order.after_wash_image ?? null,
+                rider_pickup_id: order.rider_pickup_id?.id ?? null,
+                rider_delivery_id: order.rider_delivery_id?.id ?? null,
                 address_lat: addressLat,
                 address_lng: addressLng,
-                order_datetime: orderDatetime,
-                address: addressText,
-                customer: customer,
+                order_datetime: order.order_datetime
+                    ? order.order_datetime.toDate().toISOString()
+                    : null,
+                address: address?.address_text ?? null,
+                customer: customerData
+                    ? {
+                        id: customerSnap.id,
+                        name: customerData.fullname ?? null,
+                        phone: customerData.phone ?? null,
+                        profile_image: customerData.profile_image ?? null,
+                    }
+                    : null,
             };
         }));
-        return res.status(200).json({
-            ok: true,
-            data: orders,
-        });
+        return res.status(200).json({ ok: true, data: orders });
     }
     catch (error) {
         console.error("get rider orders error:", error);
@@ -782,3 +762,16 @@ exports.router.put("/accept/:id", async (req, res) => {
         });
     }
 });
+// router.get("/testreport/:id", async(req,res)=>{
+//   const storeId = req.params.id;
+//   if(!storeId){
+//     console.log(" store null");
+//   }
+//   const staffRef = await db.collection("laundry_staff").doc(storeId);
+//   const staffSnap = staffRef.get();
+//   if((await staffSnap).exists){
+//     console.log("ไม่มี data");
+//   }
+//   const staff = staffSnap.forEach(doc => {
+//   });
+// })

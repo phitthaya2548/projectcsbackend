@@ -4,6 +4,7 @@ export type StoreStatus = "OPEN" | "TEMP_CLOSED" | "PENDING";
 export const StoreStatus: StoreStatus[] = [
   "OPEN",
   "TEMP_CLOSED",
+  "OPEN"
 ];export type StoreData = {
   store_id: string;
   username: string;

@@ -127,16 +127,37 @@ exports.router.get("/historynow/:id", async (req, res) => {
             return res.status(404).json({ ok: false, message: "ไม่พบ staff คนนี้" });
         }
         const { day, month, year } = req.query;
-        const monthMode = !day && !!month && !!year;
-        const base = month && year
-            ? dayjs_1.default.tz(`${year}-${month}-${day ?? 1} 00:00:00`, "YYYY-M-D HH:mm:ss", TZ)
-            : (0, dayjs_1.default)().tz(TZ);
-        if (!base.isValid()) {
-            return res.status(400).json({ ok: false, message: "วันที่ไม่ถูกต้อง" });
+        let base = (0, dayjs_1.default)().tz(TZ);
+        let unit = "day";
+        if (day || month || year) {
+            if (!month || !year) {
+                return res.status(400).json({
+                    ok: false,
+                    message: "กรุณาระบุ month และ year",
+                });
+            }
+            const monthNum = Number(month);
+            const yearNum = Number(year);
+            const dayNum = day ? Number(day) : 1;
+            if (!Number.isInteger(monthNum) ||
+                monthNum < 1 ||
+                monthNum > 12 ||
+                !Number.isInteger(yearNum) ||
+                !Number.isInteger(dayNum) ||
+                dayNum < 1 ||
+                dayNum > 31) {
+                return res.status(400).json({ ok: false, message: "วันที่ไม่ถูกต้อง" });
+            }
+            base = dayjs_1.default.tz(`${yearNum}-${monthNum}-${dayNum}`, "YYYY-M-D", TZ);
+            if (!base.isValid() || base.month() + 1 !== monthNum) {
+                return res.status(400).json({ ok: false, message: "วันที่ไม่ถูกต้อง" });
+            }
+            unit = day ? "day" : "month";
         }
-        const unit = monthMode ? "month" : "day";
-        const since = firestore_1.Timestamp.fromDate(base.startOf(unit).toDate());
-        const until = firestore_1.Timestamp.fromDate(base.add(1, unit).startOf(unit).toDate());
+        const start = base.startOf(unit);
+        const end = start.add(1, unit);
+        const since = firestore_1.Timestamp.fromDate(start.toDate());
+        const until = firestore_1.Timestamp.fromDate(end.toDate());
         const activeStatuses = [
             "waiting_wash",
             "waiting_dry",

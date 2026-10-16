@@ -26,7 +26,7 @@ app.use((req, res, next) => {
   console.log(req.method, req.url);
   next();
 });
-
+console.log(new Date(2026, 9, 16).toISOString());
 app.use("", login);
 app.use("/register/customer", register_customer);
 app.use("/register/store", register_store);

@@ -179,20 +179,47 @@ router.get("/historynow/:id", async (req, res) => {
       year?: string;
     };
 
-    const monthMode = !day && !!month && !!year;
+    let base = dayjs().tz(TZ);
+    let unit: "day" | "month" = "day";
 
-    const base =
-      month && year
-        ? dayjs.tz(`${year}-${month}-${day ?? 1} 00:00:00`, "YYYY-M-D HH:mm:ss", TZ)
-        : dayjs().tz(TZ);
+    if (day || month || year) {
+      if (!month || !year) {
+        return res.status(400).json({
+          ok: false,
+          message: "กรุณาระบุ month และ year",
+        });
+      }
 
-    if (!base.isValid()) {
-      return res.status(400).json({ ok: false, message: "วันที่ไม่ถูกต้อง" });
+      const monthNum = Number(month);
+      const yearNum = Number(year);
+      const dayNum = day ? Number(day) : 1;
+
+      if (
+        !Number.isInteger(monthNum) ||
+        monthNum < 1 ||
+        monthNum > 12 ||
+        !Number.isInteger(yearNum) ||
+        !Number.isInteger(dayNum) ||
+        dayNum < 1 ||
+        dayNum > 31
+      ) {
+        return res.status(400).json({ ok: false, message: "วันที่ไม่ถูกต้อง" });
+      }
+
+      base = dayjs.tz(`${yearNum}-${monthNum}-${dayNum}`, "YYYY-M-D", TZ);
+
+      if (!base.isValid() || base.month() + 1 !== monthNum) {
+        return res.status(400).json({ ok: false, message: "วันที่ไม่ถูกต้อง" });
+      }
+
+      unit = day ? "day" : "month";
     }
 
-    const unit = monthMode ? "month" : "day";
-    const since = Timestamp.fromDate(base.startOf(unit).toDate());
-    const until = Timestamp.fromDate(base.add(1, unit).startOf(unit).toDate());
+    const start = base.startOf(unit);
+    const end = start.add(1, unit);
+
+    const since = Timestamp.fromDate(start.toDate());
+    const until = Timestamp.fromDate(end.toDate());
 
     const activeStatuses: OrderStatus[] = [
       "waiting_wash",
@@ -209,7 +236,6 @@ router.get("/historynow/:id", async (req, res) => {
       "delivery_pickup_completed",
       "delivery_in_progress",
       "completed",
-
     ];
 
     const [activeSnap, doneSnap] = await Promise.all([

@@ -1098,16 +1098,15 @@ router.get("/store/history/:id", async (req, res) => {
         });
       }
 
-      const start = dayjs.tz(`${yearNum}-${monthNum}-${dayNum} 00:00:00`,"YYYY-M-D HH:mm:ss",TZ);
+      const base = dayjs.tz(`${yearNum}-${monthNum}-${dayNum}`, "YYYY-M-D", TZ);
 
-      if (!start.isValid() || start.month() + 1 !== monthNum) {
-        return res.status(400).json({
-          ok: false,
-          message: "วันที่ไม่ถูกต้อง",
-        });
-      }
+if (!base.isValid() || base.month() + 1 !== monthNum) {
+  return res.status(400).json({ ok: false, message: "วันที่ไม่ถูกต้อง" });
+}
 
-      const end = day ? start.add(1, "day") : start.add(1, "month");
+const unit = day ? "day" : "month";
+const start = base.startOf(unit);
+const end = start.add(1, unit);
 
       query = query
         .where("order_datetime", ">=", Timestamp.fromDate(start.toDate()))

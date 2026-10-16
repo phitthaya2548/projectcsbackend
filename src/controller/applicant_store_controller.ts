@@ -1,12 +1,10 @@
 import { Router } from "express";
 import { db, FieldValue } from "../config/firebase";
-import { StoreImage } from "../modules/image_store";
 import { AggregateField, Timestamp } from "firebase-admin/firestore";
 import { Request, Response } from "express";
 import { StoreData } from "../modules/store";
 import { Rider } from "../modules/rider";
 import { LaundryStaff } from "../modules/LaundryStaff";
-import { Order } from "../modules/order";
 export const router = Router();
 
 const isBlank = (v: any) => v == null || String(v).trim() === "";
@@ -45,7 +43,7 @@ router.get("/stores/list", async (req, res) => {
           })
           .get();
 
-        const review = reviewSnap.data();
+        const review = reviewSnap.data() ;
 
         return {
           store_id: doc.id,

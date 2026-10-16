@@ -83,11 +83,14 @@ exports.router.get("/report/store/:id", async (req, res) => {
                 message: "กรุณาระบุ month และ year ให้ถูกต้อง",
             });
         }
-        if (type === "day" && (!Number.isInteger(day) || day < 1 || day > 31)) {
-            return res.status(400).json({
-                ok: false,
-                message: "กรุณาระบุ day ให้ถูกต้อง",
-            });
+        if (type === "day") {
+            const daysInMonth = new Date(year, month, 0).getDate();
+            if (!Number.isInteger(day) || day < 1 || day > daysInMonth) {
+                return res.status(400).json({
+                    ok: false,
+                    message: "วันที่ไม่ถูกต้อง",
+                });
+            }
         }
         const storeRef = firebase_1.db.collection("stores").doc(storeId);
         if (!(await storeRef.get()).exists) {
@@ -96,26 +99,16 @@ exports.router.get("/report/store/:id", async (req, res) => {
                 message: "ไม่พบร้านค้า",
             });
         }
+        // ช่วงเวลา [start, end) (ใช้เวลาของเซิร์ฟเวอร์ ต้องเป็น Asia/Bangkok)
         let start;
         let end;
         if (type === "day") {
-            const date = new Date(Date.UTC(year, month - 1, day));
-            if (date.getUTCFullYear() !== year ||
-                date.getUTCMonth() + 1 !== month ||
-                date.getUTCDate() !== day) {
-                return res.status(400).json({
-                    ok: false,
-                    message: "วันที่ไม่ถูกต้อง",
-                });
-            }
-            const next = new Date(Date.UTC(year, month - 1, day + 1));
-            start = new Date(`${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}T00:00:00+07:00`);
-            end = new Date(`${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-${String(next.getUTCDate()).padStart(2, "0")}T00:00:00+07:00`);
+            start = new Date(year, month - 1, day);
+            end = new Date(year, month - 1, day + 1);
         }
         else {
-            start = new Date(`${year}-${String(month).padStart(2, "0")}-01T00:00:00+07:00`);
-            const next = new Date(Date.UTC(year, month, 1));
-            end = new Date(`${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-01T00:00:00+07:00`);
+            start = new Date(year, month - 1, 1);
+            end = new Date(year, month, 1);
         }
         const [staffSnap, riderSnap, orderSnap] = await Promise.all([
             firebase_1.db.collection("laundry_staff")
@@ -130,43 +123,30 @@ exports.router.get("/report/store/:id", async (req, res) => {
                 .where("order_datetime", "<", firestore_1.Timestamp.fromDate(end))
                 .get(),
         ]);
-        const staffs = {};
-        const riders = {};
-        staffSnap.forEach((doc) => {
+        const orders = orderSnap.docs.map((doc) => doc.data());
+        const staffs = staffSnap.docs.map((doc) => {
             const data = doc.data();
-            staffs[doc.id] = {
+            return {
                 type: "staff",
                 id: doc.id,
                 fullname: data.fullname || "",
                 profile_image: data.profile_image || null,
-                total_jobs: 0,
+                total_jobs: orders.filter((o) => o.staff_id?.id === doc.id).length,
             };
         });
-        riderSnap.forEach((doc) => {
+        const riders = riderSnap.docs.map((doc) => {
             const data = doc.data();
-            riders[doc.id] = {
+            const pickup_jobs = orders.filter((o) => o.rider_pickup_id?.id === doc.id).length;
+            const delivery_jobs = orders.filter((o) => o.rider_delivery_id?.id === doc.id).length;
+            return {
                 type: "rider",
                 id: doc.id,
                 fullname: data.fullname || "",
                 profile_image: data.profile_image || null,
-                pickup_jobs: 0,
-                delivery_jobs: 0,
-                total_jobs: 0,
+                pickup_jobs,
+                delivery_jobs,
+                total_jobs: pickup_jobs + delivery_jobs,
             };
-        });
-        orderSnap.forEach((doc) => {
-            const order = doc.data();
-            if (order.staff_id && staffs[order.staff_id.id]) {
-                staffs[order.staff_id.id].total_jobs++;
-            }
-            if (order.rider_pickup_id && riders[order.rider_pickup_id.id]) {
-                riders[order.rider_pickup_id.id].pickup_jobs++;
-                riders[order.rider_pickup_id.id].total_jobs++;
-            }
-            if (order.rider_delivery_id && riders[order.rider_delivery_id.id]) {
-                riders[order.rider_delivery_id.id].delivery_jobs++;
-                riders[order.rider_delivery_id.id].total_jobs++;
-            }
         });
         return res.json({
             ok: true,
@@ -177,8 +157,8 @@ exports.router.get("/report/store/:id", async (req, res) => {
                 year: String(year),
             },
             total_orders: orderSnap.size,
-            staffs: Object.values(staffs),
-            riders: Object.values(riders),
+            staffs,
+            riders,
         });
     }
     catch (error) {

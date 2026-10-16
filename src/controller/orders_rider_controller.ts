@@ -10,9 +10,10 @@ import { Rider } from "../modules/rider";
 import { Timestamp, UpdateData } from "firebase-admin/firestore";
 import { StoreData } from "../modules/store";
 import { NotificationService } from "../services/notification";
-import { constants } from "node:fs";
-import { CustomSignalOperator } from "firebase-admin/remote-config";
+import dayjs from "dayjs";
 
+
+const TZ = "Asia/Bangkok";
 
 export const router = Router();
 
@@ -498,9 +499,8 @@ router.get("/:id", async (req, res) => {
     const hasRiderLocation = !isNaN(riderLat) && !isNaN(riderLng);
 
     const riderRef = db.collection("riders").doc(rider_id);
-    const riderSnap = await riderRef.get();
 
-    if (!riderSnap.exists) {
+    if (!(await riderRef.get()).exists) {
       return res.status(404).json({
         ok: false,
         message: "ไม่พบพนักงานรับส่ง",
@@ -532,48 +532,51 @@ router.get("/:id", async (req, res) => {
     const isDoneMode = req.query.mode === "done";
     const statuses = isDoneMode ? doneStatuses : activeStatuses;
 
+    const { day, month, year } = req.query as {
+      day?: string;
+      month?: string;
+      year?: string;
+    };
 
-    const offsetMs = 7 * 3600 * 1000;
-    const nowTh = new Date(Date.now() + offsetMs);
+    let start: dayjs.Dayjs | null = null;
+    let end: dayjs.Dayjs | null = null;
 
-    const day = req.query.day ? parseInt(req.query.day as string, 10) : null;
-    const month = req.query.month ? parseInt(req.query.month as string, 10) : null;
-    const year = req.query.year ? parseInt(req.query.year as string, 10) : nowTh.getUTCFullYear();
-
-    let rangeStart: Date | null = null;
-    let rangeEnd: Date | null = null;
-
-    if (isDoneMode && (day !== null || month !== null)) {
-      if (month === null || isNaN(month) || month < 1 || month > 12) {
+    if (isDoneMode && (day || month)) {
+      if (!month) {
         return res.status(400).json({
           ok: false,
           message: "กรุณาระบุเดือน (month) ให้ถูกต้อง 1-12",
         });
       }
 
-      if (day !== null && (isNaN(day) || day < 1 || day > 31)) {
+      const monthNum = Number(month);
+      const yearNum = year ? Number(year) : dayjs().tz(TZ).year();
+      const dayNum = day ? Number(day) : 1;
+
+      if (
+        !Number.isInteger(monthNum) ||
+        monthNum < 1 ||
+        monthNum > 12 ||
+        !Number.isInteger(yearNum) ||
+        !Number.isInteger(dayNum) ||
+        dayNum < 1 ||
+        dayNum > 31
+      ) {
         return res.status(400).json({
           ok: false,
-          message: "วัน (day) ไม่ถูกต้อง",
+          message: "วันที่ไม่ถูกต้อง",
         });
       }
 
-      if (isNaN(year)) {
-        return res.status(400).json({
-          ok: false,
-          message: "ปี (year) ไม่ถูกต้อง",
-        });
+      const base = dayjs.tz(`${yearNum}-${monthNum}-${dayNum}`, "YYYY-M-D", TZ);
+
+      if (!base.isValid() || base.month() + 1 !== monthNum) {
+        return res.status(400).json({ ok: false, message: "วันที่ไม่ถูกต้อง" });
       }
 
-      if (day !== null) {
-        // กรองรายวัน
-        rangeStart = new Date(Date.UTC(year, month - 1, day) - offsetMs);
-        rangeEnd = new Date(Date.UTC(year, month - 1, day + 1) - offsetMs);
-      } else {
-        // กรองรายเดือน
-        rangeStart = new Date(Date.UTC(year, month - 1, 1) - offsetMs);
-        rangeEnd = new Date(Date.UTC(year, month, 1) - offsetMs);
-      }
+      const unit = day ? "day" : "month";
+      start = base.startOf(unit);
+      end = start.add(1, unit);
     }
 
     const [pickupSnap, deliverySnap] = await Promise.all([
@@ -588,75 +591,51 @@ router.get("/:id", async (req, res) => {
         .get(),
     ]);
 
-    let orderDocs = [...pickupSnap.docs];
+    const orderMap = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>();
+    [...pickupSnap.docs, ...deliverySnap.docs].forEach((doc) =>
+      orderMap.set(doc.id, doc)
+    );
 
-    for (const doc of deliverySnap.docs) {
-      if (!orderDocs.some((item) => item.id === doc.id)) {
-        orderDocs.push(doc);
-      }
-    }
+    let orderDocs = [...orderMap.values()];
 
-    // กรองตามวัน/เดือน
-    if (rangeStart && rangeEnd) {
+    if (start && end) {
+      const rangeStart = start.toDate();
+      const rangeEnd = end.toDate();
+
       orderDocs = orderDocs.filter((doc) => {
         const dt = (doc.data() as Order).order_datetime;
         if (!dt) return false;
         const d = dt.toDate();
-        return d >= rangeStart! && d < rangeEnd!;
+        return d >= rangeStart && d < rangeEnd;
       });
     }
 
     if (orderDocs.length === 0) {
-      return res.status(200).json({
-        ok: true,
-        data: [],
-      });
+      return res.status(200).json({ ok: true, data: [] });
     }
 
     const orders = await Promise.all(
       orderDocs.map(async (orderDoc) => {
-        const orderData = orderDoc.data() as Order;
+        const order = orderDoc.data() as Order;
 
-        const addressSnap = orderData.address_id
-          ? await orderData.address_id.get()
+        const [addressSnap, customerSnap] = await Promise.all([
+          order.address_id ? order.address_id.get() : null,
+          order.customer_id ? order.customer_id.get() : null,
+        ]);
+
+        const address = addressSnap?.exists
+          ? (addressSnap.data() as CustomerAddress)
+          : null;
+        const customerData = customerSnap?.exists
+          ? (customerSnap.data() as CustomerData)
           : null;
 
-        const customerSnap = orderData.customer_id
-          ? await orderData.customer_id.get()
-          : null;
+        const addressLat = address?.latitude ?? null;
+        const addressLng = address?.longitude ?? null;
 
-        let addressText = null;
-        let addressLat = null;
-        let addressLng = null;
+        let distanceKm: number | null = null;
 
-        if (addressSnap?.exists) {
-          const addressData = addressSnap.data() as CustomerAddress;
-
-          addressText = addressData.address_text ?? null;
-          addressLat = addressData.latitude ?? null;
-          addressLng = addressData.longitude ?? null;
-        }
-
-        let customer = null;
-
-        if (customerSnap?.exists) {
-          const customerData = customerSnap.data() as CustomerData;
-
-          customer = {
-            id: customerSnap.id,
-            name: customerData.fullname ?? null,
-            phone: customerData.phone ?? null,
-            profile_image: customerData.profile_image ?? null,
-          };
-        }
-
-        let distanceKm = null;
-
-        if (
-          hasRiderLocation &&
-          addressLat !== null &&
-          addressLng !== null
-        ) {
+        if (hasRiderLocation && addressLat !== null && addressLng !== null) {
           const distance = DistanceService.haversineKm(
             riderLat,
             riderLng,
@@ -669,38 +648,36 @@ router.get("/:id", async (req, res) => {
           }
         }
 
-        let orderDatetime = null;
-
-        if (orderData.order_datetime) {
-          orderDatetime = orderData.order_datetime
-            .toDate()
-            .toISOString();
-        }
-
         return {
           id: orderDoc.id,
-          order_number: orderData.order_id ?? null,
-          status: orderData.status ?? null,
-          service_type: orderData.service_type ?? null,
+          order_number: order.order_id ?? null,
+          status: order.status ?? null,
+          service_type: order.service_type ?? null,
           distance_km: distanceKm,
-          note: orderData.note ?? null,
-          before_wash_image: orderData.before_wash_image ?? null,
-          after_wash_image: orderData.after_wash_image ?? null,
-          rider_pickup_id: orderData.rider_pickup_id?.id ?? null,
-          rider_delivery_id: orderData.rider_delivery_id?.id ?? null,
+          note: order.note ?? null,
+          before_wash_image: order.before_wash_image ?? null,
+          after_wash_image: order.after_wash_image ?? null,
+          rider_pickup_id: order.rider_pickup_id?.id ?? null,
+          rider_delivery_id: order.rider_delivery_id?.id ?? null,
           address_lat: addressLat,
           address_lng: addressLng,
-          order_datetime: orderDatetime,
-          address: addressText,
-          customer: customer,
+          order_datetime: order.order_datetime
+            ? order.order_datetime.toDate().toISOString()
+            : null,
+          address: address?.address_text ?? null,
+          customer: customerData
+            ? {
+                id: customerSnap!.id,
+                name: customerData.fullname ?? null,
+                phone: customerData.phone ?? null,
+                profile_image: customerData.profile_image ?? null,
+              }
+            : null,
         };
       })
     );
 
-    return res.status(200).json({
-      ok: true,
-      data: orders,
-    });
+    return res.status(200).json({ ok: true, data: orders });
   } catch (error) {
     console.error("get rider orders error:", error);
 
@@ -1015,3 +992,19 @@ router.put("/accept/:id", async (req, res) => {
 
 
 
+// router.get("/testreport/:id", async(req,res)=>{
+//   const storeId = req.params.id;
+
+//   if(!storeId){
+//     console.log(" store null");
+//   }
+//   const staffRef = await db.collection("laundry_staff").doc(storeId);
+
+//   const staffSnap = staffRef.get();
+//   if((await staffSnap).exists){
+//     console.log("ไม่มี data");
+//   }
+//   const staff = staffSnap.forEach(doc => {
+    
+//   });
+// })
