@@ -50,25 +50,15 @@ exports.router.post("/create", async (req, res) => {
                 message: "ร้านปิดอยู่ ไม่สามารถสั่งได้",
             });
         }
-        const now = new Date(new Date().toLocaleString("en-US", {
+        const now = new Date().toLocaleTimeString("en-GB", {
             timeZone: "Asia/Bangkok",
-        }));
-        const currentMinutes = now.getHours() * 60 + now.getMinutes();
-        const [openHour, openMinute] = store.opening_hours.split(":").map(Number);
-        const [closeHour, closeMinute] = store.closed_hours.split(":").map(Number);
-        const openMinutes = openHour * 60 + openMinute;
-        const closeMinutes = closeHour * 60 + closeMinute;
-        let isOpen = false;
-        if (openMinutes < closeMinutes) {
-            isOpen =
-                currentMinutes >= openMinutes &&
-                    currentMinutes < closeMinutes;
-        }
-        else {
-            isOpen =
-                currentMinutes >= openMinutes ||
-                    currentMinutes < closeMinutes;
-        }
+            hour: "2-digit",
+            minute: "2-digit",
+        });
+        const { opening_hours: open, closed_hours: close } = store;
+        const isOpen = open < close
+            ? now >= open && now < close
+            : now >= open || now < close;
         if (!isOpen) {
             return res.status(400).json({
                 ok: false,
@@ -973,43 +963,5 @@ exports.router.get("/store/completed/detail/:id", async (req, res) => {
     catch (error) {
         console.error("Error fetching completed order:", error);
         return res.status(500).json({ error: "Internal server error" });
-    }
-});
-exports.router.get("/testreport", async (req, res) => {
-    try {
-        const staffeSnap = await firebase_1.db
-            .collection("laundry_staff")
-            .get();
-        if (staffeSnap.empty) {
-            return res.status(200).json({
-                ok: true,
-                total: 0,
-                data: [],
-            });
-        }
-        const staff = await Promise.all(staffeSnap.docs.map(async (doc) => {
-            const data = doc.data();
-            const orderSnap = await firebase_1.db
-                .collection("orders")
-                .where("staff_id", "==", doc.ref)
-                .where("status", "==", "completed")
-                .get();
-            return {
-                fullneme: data.fullname,
-                count: orderSnap.size
-            };
-        }));
-        staff.sort((a, b) => b.count - a.count);
-        return res.status(200).json({
-            ok: true,
-            data: staff,
-        });
-    }
-    catch (error) {
-        console.error("TESTREPORT ERROR:", error);
-        return res.status(500).json({
-            ok: false,
-            message: "Server error",
-        });
     }
 });

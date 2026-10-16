@@ -13,7 +13,7 @@ import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 import timezone from "dayjs/plugin/timezone";
 import { StoreData } from "../modules/store";
-import { count } from "node:console";
+
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -71,29 +71,18 @@ router.post("/create", async (req, res) => {
       });
     }
 
-    const now = new Date(
-      new Date().toLocaleString("en-US", {
-        timeZone: "Asia/Bangkok",
-      }),
-    );
+    const now = new Date().toLocaleTimeString("en-GB", {
+      timeZone: "Asia/Bangkok",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
 
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
-    const [openHour, openMinute] = store.opening_hours.split(":").map(Number);
-    const [closeHour, closeMinute] = store.closed_hours.split(":").map(Number);
-    const openMinutes = openHour * 60 + openMinute;
-    const closeMinutes = closeHour * 60 + closeMinute;
+    const { opening_hours: open, closed_hours: close } = store;
 
-    let isOpen = false;
-
-    if (openMinutes < closeMinutes) {
-      isOpen =
-        currentMinutes >= openMinutes &&
-        currentMinutes < closeMinutes;
-    } else {
-      isOpen =
-        currentMinutes >= openMinutes ||
-        currentMinutes < closeMinutes;
-    }
+    const isOpen =
+      open < close
+        ? now >= open && now < close
+        : now >= open || now < close;
 
     if (!isOpen) {
       return res.status(400).json({
@@ -129,7 +118,7 @@ router.post("/create", async (req, res) => {
           message: "ไม่พบข้อมูลพิกัด",
         });
       }
-      const distanceKm = DistanceService.haversineKm(storeLat,storeLng, customerLat,customerLng,);
+      const distanceKm = DistanceService.haversineKm(storeLat, storeLng, customerLat, customerLng,);
 
       if (distanceKm > radiusKm) {
         return res.status(400).json({
@@ -156,7 +145,7 @@ router.post("/create", async (req, res) => {
       service_price: 0,
       delivery_price: 0,
       detergent_option: detergent_option ?? null,
-      before_wash_image:  "",
+      before_wash_image: "",
       after_wash_image: "",
       detergent_price: 0,
       note: note ?? null,
@@ -263,7 +252,7 @@ router.put("/cancel/:id", async (req, res) => {
       });
     }
 
-     const updatedata: Partial<Order> ={
+    const updatedata: Partial<Order> = {
       status: "cancelled" as OrderStatus,
       order_datetime: Timestamp.now(),
     }
@@ -333,38 +322,38 @@ router.put("/store/accept/:id", async (req, res) => {
     await orderRef.update(updteData);
 
     if (Storedata?.customer_id) {
-  await NotificationService.sendToUser(
-    Storedata.customer_id.id,
-    "customer",
-    "ร้านยืนยันออเดอร์แล้ว",
-    "ร้านยืนยันออเดอร์ของคุณแล้ว รอไรเดอร์รับงาน",
-    orderId
-  ).catch((e) => console.error("notify customer failed:", e));
-}
- const storeRef = db.collection("stores").doc(store_id);
-const storeSnap = await storeRef.get();
+      await NotificationService.sendToUser(
+        Storedata.customer_id.id,
+        "customer",
+        "ร้านยืนยันออเดอร์แล้ว",
+        "ร้านยืนยันออเดอร์ของคุณแล้ว รอไรเดอร์รับงาน",
+        orderId
+      ).catch((e) => console.error("notify customer failed:", e));
+    }
+    const storeRef = db.collection("stores").doc(store_id);
+    const storeSnap = await storeRef.get();
 
-if (!storeSnap.exists) {
-  throw new Error(`ไม่เจอร้านค้า`);
-}
+    if (!storeSnap.exists) {
+      throw new Error(`ไม่เจอร้านค้า`);
+    }
 
-const onlineRiders = await db
-  .collection("riders")
-  .where("store_id", "==", storeRef)
-  .where("status", "==", "ONLINE")
-  .get();
+    const onlineRiders = await db
+      .collection("riders")
+      .where("store_id", "==", storeRef)
+      .where("status", "==", "ONLINE")
+      .get();
 
-await Promise.allSettled(
-  onlineRiders.docs.map((riderDoc) =>
-    NotificationService.sendToUser(
-      riderDoc.id,
-      "rider",
-      "ออเดอร์ใหม่",
-      "มีงานใหม่รอรับ แตะเพื่อดูรายละเอียด",
-      orderId
-    )
-  )
-);
+    await Promise.allSettled(
+      onlineRiders.docs.map((riderDoc) =>
+        NotificationService.sendToUser(
+          riderDoc.id,
+          "rider",
+          "ออเดอร์ใหม่",
+          "มีงานใหม่รอรับ แตะเพื่อดูรายละเอียด",
+          orderId
+        )
+      )
+    );
 
     return res.status(200).json({
       ok: true,
@@ -459,7 +448,7 @@ router.get("/store/before/detail/:id", async (req, res) => {
       data.customer_id ? data.customer_id.get() : null,
     ]);
 
-    const address = addressSnap?.data() as CustomerAddress; 
+    const address = addressSnap?.data() as CustomerAddress;
     const customer = customerSnap?.data() as CustomerData;
 
     const order = {
@@ -523,7 +512,7 @@ router.get("/store/after/detail/:id", async (req, res) => {
     const riderPickup = riderPickupSnap?.exists
       ? riderPickupSnap.data() as Rider
       : null;
-    const staff = staffSnap?.exists ? staffSnap.data() as LaundryStaff: null;
+    const staff = staffSnap?.exists ? staffSnap.data() as LaundryStaff : null;
     const riderDelivery = riderDeliverySnap?.exists
       ? riderDeliverySnap.data() as Rider
       : null;
@@ -555,30 +544,30 @@ router.get("/store/after/detail/:id", async (req, res) => {
 
       rider_pickup: riderPickup
         ? {
-            fullname: riderPickup.fullname ?? "-",
-            phone: riderPickup.phone ?? "-",
-            profile_image: riderPickup.profile_image ?? null,
-            license_plate: riderPickup.license_plate ?? null,
-            vehicle_type: riderPickup.vehicle_type ?? null,
-          }
+          fullname: riderPickup.fullname ?? "-",
+          phone: riderPickup.phone ?? "-",
+          profile_image: riderPickup.profile_image ?? null,
+          license_plate: riderPickup.license_plate ?? null,
+          vehicle_type: riderPickup.vehicle_type ?? null,
+        }
         : null,
 
       staff: staff
         ? {
-            fullname: staff.fullname ?? "-",
-            phone: staff.phone ?? "-",
-            profile_image: staff.profile_image ?? null,
-          }
+          fullname: staff.fullname ?? "-",
+          phone: staff.phone ?? "-",
+          profile_image: staff.profile_image ?? null,
+        }
         : null,
 
       rider_delivery: riderDelivery
         ? {
-            fullname: riderDelivery.fullname ?? "-",
-            phone: riderDelivery.phone ?? "-",
-            profile_image: riderDelivery.profile_image ?? null,
-            license_plate: riderDelivery.license_plate ?? null,
-            vehicle_type: riderDelivery.vehicle_type ?? null,
-          }
+          fullname: riderDelivery.fullname ?? "-",
+          phone: riderDelivery.phone ?? "-",
+          profile_image: riderDelivery.profile_image ?? null,
+          license_plate: riderDelivery.license_plate ?? null,
+          vehicle_type: riderDelivery.vehicle_type ?? null,
+        }
         : null,
     };
 
@@ -656,8 +645,8 @@ router.get("/customer/list/:id", async (req, res) => {
 
           order_datetime: order.order_datetime
             ? {
-                _seconds: order.order_datetime.seconds,
-              }
+              _seconds: order.order_datetime.seconds,
+            }
             : null,
 
           customer_fullname: customer.fullname ?? "-",
@@ -670,7 +659,7 @@ router.get("/customer/list/:id", async (req, res) => {
       })
     );
 
-     const successCount = data.filter(
+    const successCount = data.filter(
       (item) => item.status === "completed"
     ).length;
 
@@ -727,7 +716,7 @@ router.get("/customer/completed/detail/:id", async (req, res) => {
     const riderPickup = riderPickupSnap?.data() as Rider;
     const riderDelivery = riderDeliverySnap?.data() as Rider;
     const staff = staffSnap?.data() as LaundryStaff;
-    const review = reviewSnap.exists ? reviewSnap.data() as Review: null;
+    const review = reviewSnap.exists ? reviewSnap.data() as Review : null;
     const storeData = storeSnap?.data() as StoreData;
     const addressData = addressSnap?.data() as CustomerAddress;
 
@@ -942,7 +931,7 @@ router.get("/store/:id/reviews", async (req, res) => {
     );
 
     const ratingSum = reviews.reduce(
-      (sum, review) => sum + review.rating,0);
+      (sum, review) => sum + review.rating, 0);
 
     const avgRating = ratingSum / reviews.length;
 
@@ -980,12 +969,12 @@ router.get("/store/order/list/:id", async (req, res) => {
     }
 
     const ordersSnap = await db
-  .collection("orders")
-  .where("store_id", "==", storeRef)
-  .where("status", "!=", "pending_confirmation")
-  .orderBy("status")
-  .orderBy("order_datetime", "desc")
-  .get();
+      .collection("orders")
+      .where("store_id", "==", storeRef)
+      .where("status", "!=", "pending_confirmation")
+      .orderBy("status")
+      .orderBy("order_datetime", "desc")
+      .get();
 
     if (ordersSnap.empty) {
       return res.json({
@@ -1027,8 +1016,8 @@ router.get("/store/order/list/:id", async (req, res) => {
 
           order_datetime: order.order_datetime
             ? {
-                _seconds: order.order_datetime.seconds,
-              }
+              _seconds: order.order_datetime.seconds,
+            }
             : null,
         };
       })
@@ -1101,13 +1090,13 @@ router.get("/store/history/:id", async (req, res) => {
 
       const base = dayjs.tz(`${yearNum}-${monthNum}-${dayNum}`, "YYYY-M-D", TZ);
 
-if (!base.isValid() || base.month() + 1 !== monthNum) {
-  return res.status(400).json({ ok: false, message: "วันที่ไม่ถูกต้อง" });
-}
+      if (!base.isValid() || base.month() + 1 !== monthNum) {
+        return res.status(400).json({ ok: false, message: "วันที่ไม่ถูกต้อง" });
+      }
 
-const unit = day ? "day" : "month";
-const start = base.startOf(unit);
-const end = start.add(1, unit);
+      const unit = day ? "day" : "month";
+      const start = base.startOf(unit);
+      const end = start.add(1, unit);
 
       query = query
         .where("order_datetime", ">=", Timestamp.fromDate(start.toDate()))
@@ -1193,7 +1182,7 @@ router.get("/store/completed/detail/:id", async (req, res) => {
         data.customer_id ? data.customer_id.get() : null,
       ]);
 
-      
+
     const riderPickup = riderPickupSnap?.data() as Rider;
     const riderDelivery = riderDeliverySnap?.data() as Rider;
     const staff = staffSnap?.data() as LaundryStaff;
@@ -1254,45 +1243,4 @@ router.get("/store/completed/detail/:id", async (req, res) => {
   }
 });
 
-router.get("/testreport", async (req, res) => {
-  try {
-    const staffeSnap = await db
-      .collection("laundry_staff")
-      .get();
 
-    if (staffeSnap.empty) {
-      return res.status(200).json({
-        ok: true,
-        total: 0,
-        data: [],
-      });
-    }
-
-    const staff = await Promise.all( staffeSnap.docs.map(async(doc) => {
-      const data = doc.data() as LaundryStaff;
-
-      const orderSnap = await db
-      .collection("orders")
-      .where("staff_id", "==", doc.ref)
-      .where("status", "==", "completed")
-      .get();
-      
-      return {
-        fullneme:data.fullname,
-        count:orderSnap.size
-      };
-    }));
-staff.sort((a, b) => b.count - a.count);
-    return res.status(200).json({
-      ok: true,
-      data: staff,
-    });
-  } catch (error) {
-    console.error("TESTREPORT ERROR:", error);
-
-    return res.status(500).json({
-      ok: false,
-      message: "Server error",
-    });
-  }
-});

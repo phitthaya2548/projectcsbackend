@@ -14,7 +14,7 @@ import { router as ordersStaff } from "./controller/orders_staff_controller";
 import { router as resetpassword } from "./controller/password_controller";
 import { router as applicant_store} from "./controller/applicant_store_controller"
 import { router as report } from "./controller/report_store_controller"
-import { router as history_order_cus} from "./controller/history_order_store_controller"
+import { router as history_order_cus} from "./controller/history_order_cus_of_store_controller"
 import { router as notification } from "./controller/notification_controller"
 import {router as employees} from "./controller/employee_store_controller";
 export const app = express();
