@@ -99,7 +99,6 @@ exports.router.get("/report/store/:id", async (req, res) => {
                 message: "ไม่พบร้านค้า",
             });
         }
-        // ช่วงเวลา [start, end) (ใช้เวลาของเซิร์ฟเวอร์ ต้องเป็น Asia/Bangkok)
         let start;
         let end;
         if (type === "day") {
@@ -119,6 +118,7 @@ exports.router.get("/report/store/:id", async (req, res) => {
                 .get(),
             firebase_1.db.collection("orders")
                 .where("store_id", "==", storeRef)
+                .where("status", "==", "completed")
                 .where("order_datetime", ">=", firestore_1.Timestamp.fromDate(start))
                 .where("order_datetime", "<", firestore_1.Timestamp.fromDate(end))
                 .get(),

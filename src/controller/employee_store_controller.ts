@@ -131,8 +131,7 @@ router.get("/report/store/:id", async (req, res) => {
         message: "ไม่พบร้านค้า",
       });
     }
-
-    // ช่วงเวลา [start, end) (ใช้เวลาของเซิร์ฟเวอร์ ต้องเป็น Asia/Bangkok)
+ 
     let start: Date;
     let end: Date;
 
@@ -155,6 +154,7 @@ router.get("/report/store/:id", async (req, res) => {
 
       db.collection("orders")
         .where("store_id", "==", storeRef)
+        .where("status","==","completed",)
         .where("order_datetime", ">=", Timestamp.fromDate(start))
         .where("order_datetime", "<", Timestamp.fromDate(end))
         .get(),
