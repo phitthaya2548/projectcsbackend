@@ -1,9 +1,18 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.router = void 0;
 const express_1 = require("express");
 const firebase_1 = require("../config/firebase");
 const firestore_1 = require("firebase-admin/firestore");
+const dayjs_1 = __importDefault(require("dayjs"));
+const utc_1 = __importDefault(require("dayjs/plugin/utc"));
+const timezone_1 = __importDefault(require("dayjs/plugin/timezone"));
+dayjs_1.default.extend(utc_1.default);
+dayjs_1.default.extend(timezone_1.default);
+const TZ = "Asia/Bangkok";
 exports.router = (0, express_1.Router)();
 exports.router.get("/store/:id", async (req, res) => {
     try {
@@ -68,46 +77,43 @@ exports.router.get("/report/store/:id", async (req, res) => {
     try {
         const storeId = req.params.id;
         const type = String(req.query.type || "day");
-        const day = Number(req.query.day);
-        const month = Number(req.query.month);
-        const year = Number(req.query.year);
+        const monthNum = Number(req.query.month);
+        const yearNum = Number(req.query.year);
+        const dayNum = type === "day" ? Number(req.query.day) : 1;
         if (!["day", "month"].includes(type)) {
             return res.status(400).json({
                 ok: false,
                 message: "type ต้องเป็น day หรือ month",
             });
         }
-        if (!Number.isInteger(month) || month < 1 || month > 12 || !Number.isInteger(year)) {
+        if (!Number.isInteger(monthNum) ||
+            monthNum < 1 ||
+            monthNum > 12 ||
+            !Number.isInteger(yearNum) ||
+            !Number.isInteger(dayNum)) {
             return res.status(400).json({
                 ok: false,
-                message: "กรุณาระบุ month และ year ให้ถูกต้อง",
+                message: "กรุณาระบุวันที่ให้ถูกต้อง",
             });
         }
-        if (type === "day") {
-            const daysInMonth = new Date(year, month, 0).getDate();
-            if (!Number.isInteger(day) || day < 1 || day > daysInMonth) {
-                return res.status(400).json({
-                    ok: false,
-                    message: "วันที่ไม่ถูกต้อง",
-                });
-            }
+        const base = dayjs_1.default.tz(`${yearNum}-${monthNum}-${dayNum}`, "YYYY-M-D", TZ);
+        if (!base.isValid() ||
+            base.month() + 1 !== monthNum ||
+            base.date() !== dayNum) {
+            return res.status(400).json({
+                ok: false,
+                message: "วันที่ไม่ถูกต้อง",
+            });
         }
+        const unit = type === "day" ? "day" : "month";
+        const start = base.startOf(unit);
+        const end = start.add(1, unit);
         const storeRef = firebase_1.db.collection("stores").doc(storeId);
         if (!(await storeRef.get()).exists) {
             return res.status(404).json({
                 ok: false,
                 message: "ไม่พบร้านค้า",
             });
-        }
-        let start;
-        let end;
-        if (type === "day") {
-            start = new Date(year, month - 1, day);
-            end = new Date(year, month - 1, day + 1);
-        }
-        else {
-            start = new Date(year, month - 1, 1);
-            end = new Date(year, month, 1);
         }
         const [staffSnap, riderSnap, orderSnap] = await Promise.all([
             firebase_1.db.collection("laundry_staff")
@@ -119,8 +125,8 @@ exports.router.get("/report/store/:id", async (req, res) => {
             firebase_1.db.collection("orders")
                 .where("store_id", "==", storeRef)
                 .where("status", "==", "completed")
-                .where("order_datetime", ">=", firestore_1.Timestamp.fromDate(start))
-                .where("order_datetime", "<", firestore_1.Timestamp.fromDate(end))
+                .where("order_datetime", ">=", firestore_1.Timestamp.fromDate(start.toDate()))
+                .where("order_datetime", "<", firestore_1.Timestamp.fromDate(end.toDate()))
                 .get(),
         ]);
         const orders = orderSnap.docs.map((doc) => doc.data());
@@ -154,9 +160,9 @@ exports.router.get("/report/store/:id", async (req, res) => {
             ok: true,
             period: {
                 type,
-                day: type === "day" ? String(day) : null,
-                month: String(month),
-                year: String(year),
+                day: type === "day" ? String(dayNum) : null,
+                month: String(monthNum),
+                year: String(yearNum),
             },
             total_orders: orderSnap.size,
             staffs,

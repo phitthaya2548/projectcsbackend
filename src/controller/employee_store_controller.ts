@@ -3,7 +3,14 @@ import { db } from "../config/firebase";
 import { Timestamp } from "firebase-admin/firestore";
 import { LaundryStaff } from "../modules/LaundryStaff";
 import { Rider } from "../modules/rider";
+import dayjs from "dayjs";
+import utc from "dayjs/plugin/utc";
+import timezone from "dayjs/plugin/timezone";
 
+dayjs.extend(utc);
+dayjs.extend(timezone);
+
+const TZ = "Asia/Bangkok";
 export const router = Router();
 
 
@@ -94,9 +101,9 @@ router.get("/report/store/:id", async (req, res) => {
   try {
     const storeId = req.params.id;
     const type = String(req.query.type || "day");
-    const day = Number(req.query.day);
-    const month = Number(req.query.month);
-    const year = Number(req.query.year);
+    const monthNum = Number(req.query.month);
+    const yearNum = Number(req.query.year);
+    const dayNum = type === "day" ? Number(req.query.day) : 1;
 
     if (!["day", "month"].includes(type)) {
       return res.status(400).json({
@@ -105,23 +112,35 @@ router.get("/report/store/:id", async (req, res) => {
       });
     }
 
-    if (!Number.isInteger(month) || month < 1 || month > 12 || !Number.isInteger(year)) {
+    if (
+      !Number.isInteger(monthNum) ||
+      monthNum < 1 ||
+      monthNum > 12 ||
+      !Number.isInteger(yearNum) ||
+      !Number.isInteger(dayNum)
+    ) {
       return res.status(400).json({
         ok: false,
-        message: "กรุณาระบุ month และ year ให้ถูกต้อง",
+        message: "กรุณาระบุวันที่ให้ถูกต้อง",
       });
     }
 
-    if (type === "day") {
-      const daysInMonth = new Date(year, month, 0).getDate();
+    const base = dayjs.tz(`${yearNum}-${monthNum}-${dayNum}`, "YYYY-M-D", TZ);
 
-      if (!Number.isInteger(day) || day < 1 || day > daysInMonth) {
-        return res.status(400).json({
-          ok: false,
-          message: "วันที่ไม่ถูกต้อง",
-        });
-      }
+    if (
+      !base.isValid() ||
+      base.month() + 1 !== monthNum ||
+      base.date() !== dayNum
+    ) {
+      return res.status(400).json({
+        ok: false,
+        message: "วันที่ไม่ถูกต้อง",
+      });
     }
+
+    const unit = type === "day" ? "day" : "month";
+    const start = base.startOf(unit);
+    const end = start.add(1, unit);
 
     const storeRef = db.collection("stores").doc(storeId);
 
@@ -130,17 +149,6 @@ router.get("/report/store/:id", async (req, res) => {
         ok: false,
         message: "ไม่พบร้านค้า",
       });
-    }
- 
-    let start: Date;
-    let end: Date;
-
-    if (type === "day") {
-      start = new Date(year, month - 1, day);
-      end = new Date(year, month - 1, day + 1);
-    } else {
-      start = new Date(year, month - 1, 1);
-      end = new Date(year, month, 1);
     }
 
     const [staffSnap, riderSnap, orderSnap] = await Promise.all([
@@ -154,9 +162,9 @@ router.get("/report/store/:id", async (req, res) => {
 
       db.collection("orders")
         .where("store_id", "==", storeRef)
-        .where("status","==","completed",)
-        .where("order_datetime", ">=", Timestamp.fromDate(start))
-        .where("order_datetime", "<", Timestamp.fromDate(end))
+        .where("status", "==", "completed")
+        .where("order_datetime", ">=", Timestamp.fromDate(start.toDate()))
+        .where("order_datetime", "<", Timestamp.fromDate(end.toDate()))
         .get(),
     ]);
 
@@ -188,15 +196,17 @@ router.get("/report/store/:id", async (req, res) => {
         total_jobs: pickup_jobs + delivery_jobs,
       };
     });
-    staffs.sort((a,b) => b.total_jobs-a.total_jobs)
-    riders.sort((a,b) => b.total_jobs-a.total_jobs)
+
+    staffs.sort((a, b) => b.total_jobs - a.total_jobs);
+    riders.sort((a, b) => b.total_jobs - a.total_jobs);
+
     return res.json({
       ok: true,
       period: {
         type,
-        day: type === "day" ? String(day) : null,
-        month: String(month),
-        year: String(year),
+        day: type === "day" ? String(dayNum) : null,
+        month: String(monthNum),
+        year: String(yearNum),
       },
       total_orders: orderSnap.size,
       staffs,
@@ -210,4 +220,5 @@ router.get("/report/store/:id", async (req, res) => {
       message: error.message || "Server error",
     });
   }
-});
+}
+)

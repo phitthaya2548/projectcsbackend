@@ -372,16 +372,10 @@ exports.router.get("/store/after/detail/:id", async (req, res) => {
         const address = addressSnap?.exists
             ? addressSnap.data()
             : null;
-        const customer = customerSnap?.exists
-            ? customerSnap.data()
-            : null;
-        const riderPickup = riderPickupSnap?.exists
-            ? riderPickupSnap.data()
-            : null;
+        const customer = customerSnap?.exists ? customerSnap.data() : null;
+        const riderPickup = riderPickupSnap?.exists ? riderPickupSnap.data() : null;
         const staff = staffSnap?.exists ? staffSnap.data() : null;
-        const riderDelivery = riderDeliverySnap?.exists
-            ? riderDeliverySnap.data()
-            : null;
+        const riderDelivery = riderDeliverySnap?.exists ? riderDeliverySnap.data() : null;
         const order = {
             order_id: orderSnap.id,
             status: data.status ?? "waiting_pickup",

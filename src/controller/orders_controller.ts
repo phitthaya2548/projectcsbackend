@@ -506,16 +506,10 @@ router.get("/store/after/detail/:id", async (req, res) => {
     const address = addressSnap?.exists
       ? (addressSnap.data() as CustomerAddress)
       : null;
-    const customer = customerSnap?.exists
-      ? (customerSnap.data() as CustomerData)
-      : null;
-    const riderPickup = riderPickupSnap?.exists
-      ? riderPickupSnap.data() as Rider
-      : null;
+    const customer = customerSnap?.exists ? (customerSnap.data() as CustomerData) : null;
+    const riderPickup = riderPickupSnap?.exists? riderPickupSnap.data() as Rider : null;
     const staff = staffSnap?.exists ? staffSnap.data() as LaundryStaff : null;
-    const riderDelivery = riderDeliverySnap?.exists
-      ? riderDeliverySnap.data() as Rider
-      : null;
+    const riderDelivery = riderDeliverySnap?.exists ? riderDeliverySnap.data() as Rider : null;
 
     const order = {
       order_id: orderSnap.id,
