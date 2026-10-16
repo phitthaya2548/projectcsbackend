@@ -1,78 +1,30 @@
-
 import { Router } from "express";
+import dayjs from "dayjs";
+import utc from "dayjs/plugin/utc";
+import timezone from "dayjs/plugin/timezone";
 import { db } from "../config/firebase";
 import { Order } from "../modules/order";
 
+dayjs.extend(utc);
+dayjs.extend(timezone);
+
 export const router = Router();
 
-const WEEKDAY_NAMES = [
-  "จันทร์",
-  "อังคาร",
-  "พุธ",
-  "พฤหัสบดี",
-  "ศุกร์",
-  "เสาร์",
-  "อาทิตย์",
-];
+const TZ = "Asia/Bangkok";
+
+const WEEKDAY_NAMES = ["จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์", "อาทิตย์"];
 
 const MONTH_NAMES = [
-  "ม.ค.",
-  "ก.พ.",
-  "มี.ค.",
-  "เม.ย.",
-  "พ.ค.",
-  "มิ.ย.",
-  "ก.ค.",
-  "ส.ค.",
-  "ก.ย.",
-  "ต.ค.",
-  "พ.ย.",
-  "ธ.ค.",
+  "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.",
+  "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค.",
 ];
-
-function toBkkDate(date: Date) {
-  return new Date(date.getTime() + 7 * 60 * 60 * 1000);
-}
-
-function getStartOfWeek(date: Date) {
-  const day = date.getUTCDay();
-  const dayIndex = day === 0 ? 6 : day - 1;
-
-  const start = new Date(date);
-  start.setUTCDate(start.getUTCDate() - dayIndex);
-  start.setUTCHours(0, 0, 0, 0);
-
-  return start;
-}
-
-function getOrderSummary(
-  orders: { date: Date; revenue: number }[],
-  start: Date,
-  end: Date
-) {
-  const filteredOrders = orders.filter(
-    order => order.date >= start && order.date < end
-  );
-
-  return {
-    revenue: filteredOrders.reduce(
-      (total, order) => total + order.revenue,
-      0
-    ),
-    orderCount: filteredOrders.length,
-  };
-}
 
 router.get("/store/walletbalance/:storeId", async (req, res) => {
   try {
-    const storeId = req.params.storeId;
-    const storeSnap = await db.collection("stores").doc(storeId).get();
+    const storeSnap = await db.collection("stores").doc(req.params.storeId).get();
 
     if (!storeSnap.exists) {
-      return res.status(404).json({
-        ok: false,
-        message: "Store not found",
-      });
+      return res.status(404).json({ ok: false, message: "Store not found" });
     }
 
     return res.status(200).json({
@@ -81,34 +33,24 @@ router.get("/store/walletbalance/:storeId", async (req, res) => {
     });
   } catch (error) {
     console.error("WALLET BALANCE ERROR:", error);
-
-    return res.status(500).json({
-      ok: false,
-      message: "Server error",
-    });
+    return res.status(500).json({ ok: false, message: "Server error" });
   }
 });
 
 router.get("/store/revenue/:storeId", async (req, res) => {
   try {
-    const storeId = req.params.storeId;
+    const { storeId } = req.params;
     const range = String(req.query.range || "day");
 
     if (!["day", "week", "month", "year"].includes(range)) {
-      return res.status(400).json({
-        ok: false,
-        message: "range ไม่ถูกต้อง",
-      });
+      return res.status(400).json({ ok: false, message: "range ไม่ถูกต้อง" });
     }
 
     const storeRef = db.collection("stores").doc(storeId);
     const storeSnap = await storeRef.get();
 
     if (!storeSnap.exists) {
-      return res.status(404).json({
-        ok: false,
-        message: "Store not found",
-      });
+      return res.status(404).json({ ok: false, message: "Store not found" });
     }
 
     const ordersSnap = await db
@@ -121,186 +63,77 @@ router.get("/store/revenue/:storeId", async (req, res) => {
       .map(doc => doc.data() as Order)
       .filter(order => order.order_datetime)
       .map(order => ({
-        date: toBkkDate(order.order_datetime.toDate()),
+        time: order.order_datetime.toDate().getTime(),
         revenue:
           (order.service_price ?? 0) +
           (order.delivery_price ?? 0) +
           (order.detergent_price ?? 0),
       }));
 
-    const now = toBkkDate(new Date());
+    const sumOrders = (start: dayjs.Dayjs, end?: dayjs.Dayjs) => {
+      const found = orders.filter(
+        o => o.time >= start.valueOf() && (!end || o.time < end.valueOf())
+      );
+      return {
+        revenue: found.reduce((sum, o) => sum + o.revenue, 0),
+        order_count: found.length,
+      };
+    };
 
-    const today = new Date(now);
-    today.setUTCHours(0, 0, 0, 0);
+    const now = dayjs().tz(TZ);
+    const startOfWeek = now.subtract((now.day() + 6) % 7, "day").startOf("day");
+    const startOfMonth = now.startOf("month");
+    const startOfYear = now.startOf("year");
 
-    const startOfWeek = getStartOfWeek(now);
+    const bars: { label: string; start: dayjs.Dayjs; end: dayjs.Dayjs }[] = [];
+    let summaryStart = now.startOf("day");
 
-    const startOfMonth = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)
-    );
-
-    const startOfYear = new Date(
-      Date.UTC(now.getUTCFullYear(), 0, 1)
-    );
-
-    let summaryStart = today;
+    if (range === "day") {
+      for (let i = 0; i < 7; i++) {
+        const start = startOfWeek.add(i, "day");
+        bars.push({ label: WEEKDAY_NAMES[i], start, end: start.add(1, "day") });
+      }
+    }
 
     if (range === "week") {
       summaryStart = startOfWeek;
+      const weekCount = Math.ceil(now.daysInMonth() / 7);
+      for (let i = 0; i < weekCount; i++) {
+        const start = startOfMonth.add(i * 7, "day");
+        bars.push({ label: `สัปดาห์ ${i + 1}`, start, end: start.add(7, "day") });
+      }
     }
 
     if (range === "month") {
       summaryStart = startOfMonth;
+      for (let i = 0; i < 12; i++) {
+        const start = startOfYear.add(i, "month");
+        bars.push({ label: MONTH_NAMES[i], start, end: start.add(1, "month") });
+      }
     }
 
     if (range === "year") {
       summaryStart = startOfYear;
+      for (let i = -4; i <= 0; i++) {
+        const start = startOfYear.add(i, "year");
+        bars.push({ label: String(start.year()), start, end: start.add(1, "year") });
+      }
     }
 
-    const summaryOrders = orders.filter(
-      order => order.date >= summaryStart
-    );
+    const chart = bars.map(bar => ({
+      label: bar.label,
+      ...sumOrders(bar.start, bar.end),
+    }));
 
+    const result = sumOrders(summaryStart);
     const summary = {
-      total_revenue: summaryOrders.reduce(
-        (total, order) => total + order.revenue,
-        0
-      ),
-      order_count: summaryOrders.length,
+      total_revenue: result.revenue,
+      order_count: result.order_count,
     };
 
-    let chart: {
-      label: string;
-      revenue: number;
-      order_count: number;
-    }[] = [];
-
-    if (range === "day") {
-      chart = WEEKDAY_NAMES.map((name, index) => {
-        const dayStart = new Date(startOfWeek);
-        dayStart.setUTCDate(startOfWeek.getUTCDate() + index);
-
-        const dayEnd = new Date(dayStart);
-        dayEnd.setUTCDate(dayStart.getUTCDate() + 1);
-
-        const result = getOrderSummary(
-          orders,
-          dayStart,
-          dayEnd
-        );
-
-        return {
-          label: name,
-          revenue: result.revenue,
-          order_count: result.orderCount,
-        };
-      });
-    }
-
-    if (range === "week") {
-      const daysInMonth = new Date(
-        Date.UTC(
-          now.getUTCFullYear(),
-          now.getUTCMonth() + 1,
-          0
-        )
-      ).getUTCDate();
-
-      const weekCount = Math.ceil(daysInMonth / 7);
-
-      chart = Array.from({ length: weekCount }, (_, index) => {
-        const weekStart = new Date(startOfMonth);
-        weekStart.setUTCDate(
-          startOfMonth.getUTCDate() + index * 7
-        );
-
-        const weekEnd = new Date(weekStart);
-        weekEnd.setUTCDate(weekStart.getUTCDate() + 7);
-
-        const result = getOrderSummary(
-          orders,
-          weekStart,
-          weekEnd
-        );
-
-        return {
-          label: `สัปดาห์ ${index + 1}`,
-          revenue: result.revenue,
-          order_count: result.orderCount,
-        };
-      });
-    }
-
-    if (range === "month") {
-      chart = MONTH_NAMES.map((name, index) => {
-        const monthStart = new Date(
-          Date.UTC(now.getUTCFullYear(), index, 1)
-        );
-
-        const monthEnd = new Date(
-          Date.UTC(now.getUTCFullYear(), index + 1, 1)
-        );
-
-        const result = getOrderSummary(
-          orders,
-          monthStart,
-          monthEnd
-        );
-
-        return {
-          label: name,
-          revenue: result.revenue,
-          order_count: result.orderCount,
-        };
-      });
-    }
-
-    if (range === "year") {
-      const currentYear = now.getUTCFullYear();
-      const yearsToShow = 5;
-
-      chart = Array.from(
-        { length: yearsToShow },
-        (_, index) => {
-          const year =
-            currentYear - (yearsToShow - 1 - index);
-
-          const yearStart = new Date(
-            Date.UTC(year, 0, 1)
-          );
-
-          const yearEnd = new Date(
-            Date.UTC(year + 1, 0, 1)
-          );
-
-          const result = getOrderSummary(
-            orders,
-            yearStart,
-            yearEnd
-          );
-
-          return {
-            label: String(year),
-            revenue: result.revenue,
-            order_count: result.orderCount,
-          };
-        }
-      );
-    }
-
-    return res.status(200).json({
-      ok: true,
-      range,
-      summary,
-      chart,
-    });
+    return res.status(200).json({ ok: true, range, summary, chart });
   } catch (error) {
     console.error("REVENUE REPORT ERROR:", error);
-
-    return res.status(500).json({
-      ok: false,
-      message: "Server error",
-    });
+    return res.status(500).json({ ok: false, message: "Server error" });
   }
 });
-
