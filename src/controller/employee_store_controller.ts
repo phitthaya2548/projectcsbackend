@@ -99,11 +99,18 @@ router.get("/store/:id", async (req, res) => {
 
 router.get("/report/store/:id", async (req, res) => {
   try {
-    const storeId = req.params.id;
-    const type = String(req.query.type || "day");
-    const monthNum = Number(req.query.month);
-    const yearNum = Number(req.query.year);
-    const dayNum = type === "day" ? Number(req.query.day) : 1;
+   const now = dayjs().tz(TZ);
+
+const storeId = req.params.id;
+const type = String(req.query.type || "day");
+const yearNum = req.query.year ? Number(req.query.year) : now.year();
+const monthNum = req.query.month ? Number(req.query.month) : now.month() + 1;
+const dayNum =
+  type === "day"
+    ? req.query.day
+      ? Number(req.query.day)
+      : now.date()
+    : 1;
 
     if (!["day", "month"].includes(type)) {
       return res.status(400).json({
