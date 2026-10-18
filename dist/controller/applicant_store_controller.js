@@ -4,6 +4,7 @@ exports.router = void 0;
 const express_1 = require("express");
 const firebase_1 = require("../config/firebase");
 const firestore_1 = require("firebase-admin/firestore");
+const notification_1 = require("../services/notification");
 exports.router = (0, express_1.Router)();
 const isBlank = (v) => v == null || String(v).trim() === "";
 exports.router.get("/stores/list", async (req, res) => {
@@ -124,6 +125,12 @@ exports.router.put("/rider/store/:id", async (req, res) => {
             });
         }
         await riderRef.update({ store_id: storeRef, status: "pending", });
+        try {
+            await notification_1.NotificationService.sendToUser(targetStoreId, "store", "มีพนักงานรับส่งสมัครเข้าร้าน", "มีพนักงานรับส่งส่งขอสมัครเข้าร้านของคุณ กรุณาตรวจสอบและยืนยัน", riderId);
+        }
+        catch (e) {
+            console.error("Send rider application notification to store error:", e);
+        }
         return res.json({
             ok: true,
             message: "ส่งคำขอผูกร้านค้าสำเร็จ กรุณารอร้านค้ายืนยัน",
@@ -207,6 +214,12 @@ exports.router.put("/staff/store/:id", async (req, res) => {
             status: "pending",
         };
         await staffRef.update(updateData);
+        try {
+            await notification_1.NotificationService.sendToUser(targetStoreId, "store", "มีพนักงานสมัครเข้าร้าน", "มีพนักงานซักอบขอสมัครเข้าร้านของคุณ กรุณาตรวจสอบและยืนยัน", staffId);
+        }
+        catch (e) {
+            console.error("Send staff application notification to store error:", e);
+        }
         return res.json({
             ok: true,
             message: "ส่งคำขอผูกร้านค้าสำเร็จ กรุณารอร้านค้ายืนยัน",

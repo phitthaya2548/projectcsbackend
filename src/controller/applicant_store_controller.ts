@@ -5,6 +5,7 @@ import { Request, Response } from "express";
 import { StoreData } from "../modules/store";
 import { Rider } from "../modules/rider";
 import { LaundryStaff } from "../modules/LaundryStaff";
+import { NotificationService } from "../services/notification";
 export const router = Router();
 
 const isBlank = (v: any) => v == null || String(v).trim() === "";
@@ -162,7 +163,17 @@ router.put("/rider/store/:id", async (req, res) => {
     }
 
     await riderRef.update({store_id: storeRef,status: "pending",});
-
+    try {
+  await NotificationService.sendToUser(
+    targetStoreId,
+    "store",
+    "มีพนักงานรับส่งสมัครเข้าร้าน",
+    "มีพนักงานรับส่งส่งขอสมัครเข้าร้านของคุณ กรุณาตรวจสอบและยืนยัน",
+    riderId
+  );
+} catch (e) {
+  console.error("Send rider application notification to store error:", e);
+}
     return res.json({
       ok: true,
       message: "ส่งคำขอผูกร้านค้าสำเร็จ กรุณารอร้านค้ายืนยัน",
@@ -275,7 +286,17 @@ router.put("/staff/store/:id", async (req, res) => {
     };
 
     await staffRef.update(updateData);
-
+    try {
+  await NotificationService.sendToUser(
+    targetStoreId,
+    "store",
+    "มีพนักงานสมัครเข้าร้าน",
+    "มีพนักงานซักอบขอสมัครเข้าร้านของคุณ กรุณาตรวจสอบและยืนยัน",
+    staffId
+  );
+} catch (e) {
+  console.error("Send staff application notification to store error:", e);
+}
     return res.json({
       ok: true,
       message:
