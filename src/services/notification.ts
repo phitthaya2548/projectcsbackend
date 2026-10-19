@@ -1,5 +1,25 @@
+import dayjs from "dayjs";
+import utc from "dayjs/plugin/utc";
+import timezone from "dayjs/plugin/timezone";
 import { db, messaging } from "../config/firebase";
 import { DeviceToken, NotificationRecord } from "../modules/notification";
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
+
+function toThaiIso(ts: any): string | null {
+  if (!ts) return null;
+
+  const date: Date | null = ts.toDate
+    ? ts.toDate()
+    : ts instanceof Date
+    ? ts
+    : null;
+
+  if (!date) return null;
+
+  return dayjs(date).tz("Asia/Bangkok").format();
+}
 
 export class NotificationService {
   static async registerToken(
@@ -119,34 +139,30 @@ export class NotificationService {
   }
 
   static async getHistory(
-  user_id: string,
-  user_role: string,
-  limit: number = 20
-) {
-  const snap = await db
-    .collection("notifications")
-    .where("user_id", "==", user_id)
-    .where("user_role", "==", user_role)
-    .orderBy("created_at", "desc")
-    .limit(limit)
-    .get();
+    user_id: string,
+    user_role: string,
+    limit: number = 20
+  ) {
+    const snap = await db
+      .collection("notifications")
+      .where("user_id", "==", user_id)
+      .where("user_role", "==", user_role)
+      .orderBy("created_at", "desc")
+      .limit(limit)
+      .get();
 
-  return snap.docs.map((doc) => {
-    const data = doc.data() as NotificationRecord;
-    const createdAt: any = (data as any).created_at;
+    return snap.docs.map((doc) => {
+      const data = doc.data() as any;
 
-    return {
-      id: doc.id,
-      ...data,
-      created_at: createdAt?.toDate
-        ? createdAt.toDate().toISOString()
-        : null,
-    };
-  });
-}
-  static async markAsRead(
-    notification_id: string
-  ): Promise<void> {
+      return {
+        id: doc.id,
+        ...data,
+        created_at: toThaiIso(data.created_at),
+      };
+    });
+  }
+
+  static async markAsRead(notification_id: string): Promise<void> {
     await db
       .collection("notifications")
       .doc(notification_id)
@@ -169,29 +185,30 @@ export class NotificationService {
 
     return snap.data().count;
   }
+
   static async markAllAsRead(
-  user_id: string,
-  user_role: string
-): Promise<void> {
-  const data = await db
-    .collection("notifications")
-    .where("user_id", "==", user_id)
-    .where("user_role", "==", user_role)
-    .where("is_read", "==", false)
-    .get();
+    user_id: string,
+    user_role: string
+  ): Promise<void> {
+    const data = await db
+      .collection("notifications")
+      .where("user_id", "==", user_id)
+      .where("user_role", "==", user_role)
+      .where("is_read", "==", false)
+      .get();
 
-  if (data.empty) {
-    return;
+    if (data.empty) {
+      return;
+    }
+
+    const batch = db.batch();
+
+    data.docs.forEach((doc) => {
+      batch.update(doc.ref, {
+        is_read: true,
+      } satisfies Partial<NotificationRecord>);
+    });
+
+    await batch.commit();
   }
-
-  const batch = db.batch();
-
-  data.docs.forEach((doc) => {
-    batch.update(doc.ref, {
-      is_read: true,
-    } satisfies Partial<NotificationRecord>);
-  });
-
-  await batch.commit();
-}
 }

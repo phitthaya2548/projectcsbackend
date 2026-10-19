@@ -1,7 +1,27 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.NotificationService = void 0;
+const dayjs_1 = __importDefault(require("dayjs"));
+const utc_1 = __importDefault(require("dayjs/plugin/utc"));
+const timezone_1 = __importDefault(require("dayjs/plugin/timezone"));
 const firebase_1 = require("../config/firebase");
+dayjs_1.default.extend(utc_1.default);
+dayjs_1.default.extend(timezone_1.default);
+function toThaiIso(ts) {
+    if (!ts)
+        return null;
+    const date = ts.toDate
+        ? ts.toDate()
+        : ts instanceof Date
+            ? ts
+            : null;
+    if (!date)
+        return null;
+    return (0, dayjs_1.default)(date).tz("Asia/Bangkok").format();
+}
 class NotificationService {
     static async registerToken(user_id, user_role, token) {
         const check = await firebase_1.db
@@ -105,13 +125,10 @@ class NotificationService {
             .get();
         return snap.docs.map((doc) => {
             const data = doc.data();
-            const createdAt = data.created_at;
             return {
                 id: doc.id,
                 ...data,
-                created_at: createdAt?.toDate
-                    ? createdAt.toDate().toISOString()
-                    : null,
+                created_at: toThaiIso(data.created_at),
             };
         });
     }
