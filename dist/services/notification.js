@@ -103,10 +103,17 @@ class NotificationService {
             .orderBy("created_at", "desc")
             .limit(limit)
             .get();
-        return snap.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-        }));
+        return snap.docs.map((doc) => {
+            const data = doc.data();
+            const createdAt = data.created_at;
+            return {
+                id: doc.id,
+                ...data,
+                created_at: createdAt?.toDate
+                    ? createdAt.toDate().toISOString()
+                    : null,
+            };
+        });
     }
     static async markAsRead(notification_id) {
         await firebase_1.db

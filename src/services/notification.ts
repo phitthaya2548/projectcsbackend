@@ -119,24 +119,31 @@ export class NotificationService {
   }
 
   static async getHistory(
-    user_id: string,
-    user_role: string,
-    limit: number = 20
-  ): Promise<({ id: string } & NotificationRecord)[]> {
-    const snap = await db
-      .collection("notifications")
-      .where("user_id", "==", user_id)
-      .where("user_role", "==", user_role)
-      .orderBy("created_at", "desc")
-      .limit(limit)
-      .get();
+  user_id: string,
+  user_role: string,
+  limit: number = 20
+) {
+  const snap = await db
+    .collection("notifications")
+    .where("user_id", "==", user_id)
+    .where("user_role", "==", user_role)
+    .orderBy("created_at", "desc")
+    .limit(limit)
+    .get();
 
-    return snap.docs.map((doc) => ({
+  return snap.docs.map((doc) => {
+    const data = doc.data() as NotificationRecord;
+    const createdAt: any = (data as any).created_at;
+
+    return {
       id: doc.id,
-      ...(doc.data() as NotificationRecord),
-    }));
-  }
-
+      ...data,
+      created_at: createdAt?.toDate
+        ? createdAt.toDate().toISOString()
+        : null,
+    };
+  });
+}
   static async markAsRead(
     notification_id: string
   ): Promise<void> {

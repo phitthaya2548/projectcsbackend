@@ -213,7 +213,6 @@ router.post("/:id/link-google", async (req, res) => {
       .where("google_id", "==", googleUid)
       .limit(1)
       .get();
-
     if (!checkgoogle_id.empty && checkgoogle_id.docs[0].id !== customerId) {
       return res.status(409).json({
         ok: false,
@@ -246,6 +245,7 @@ router.post("/:id/link-google", async (req, res) => {
 
     const displayName = user.displayName ?? null;
     const photoUrl = user.photoURL ?? null;
+
 
     const update: Record<string, any> = {
       google_id: googleUid,
