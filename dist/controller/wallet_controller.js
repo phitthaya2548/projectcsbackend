@@ -61,7 +61,7 @@ exports.router.post("/checkslip", upload.single("file"), async (req, res) => {
         });
         const responseData = respos.data;
         const errorCode = responseData?.code;
-        const data = respos.data?.data || respos.data;
+        const data = responseData.data?.data || responseData.data;
         const amount = Number(data?.amount);
         const transRef = String(data?.transRef || "").trim();
         if (!amount || amount <= 0) {

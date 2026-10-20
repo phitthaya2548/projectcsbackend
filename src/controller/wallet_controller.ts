@@ -76,7 +76,7 @@ form.append("log", "true");
 
     
 
-    const data = respos.data?.data || respos.data;
+    const data = responseData.data?.data || responseData.data;
     const amount = Number(data?.amount);
     const transRef = String(data?.transRef || "").trim();
 
