@@ -1237,4 +1237,3 @@ router.get("/store/completed/detail/:id", async (req, res) => {
   }
 });
 
-

@@ -83,12 +83,9 @@ form.append("log", "true");
 
         if (errorCode === 1014) {
           message = "บัญชีผู้รับไม่ตรงบัญชีระบบ";
-        } else if (errorCode === 1012) {
-          message = "สลิปนี้ถูกใช้แล้ว";
-        } else if (errorCode === 1013) {
-          message = "จำนวนเงินในสลิปไม่ถูกต้อง";
-        }
-
+        } 
+        console.log("status:", respos.status);
+console.log("response:", JSON.stringify(responseData, null, 2));
         return res.status(400).json({
           ok: false,
           message,
