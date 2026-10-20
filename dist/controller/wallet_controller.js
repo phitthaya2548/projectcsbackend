@@ -57,9 +57,32 @@ exports.router.post("/checkslip", upload.single("file"), async (req, res) => {
         });
         const responseData = respos.data;
         const errorCode = responseData?.code;
-        if (respos.status < 200 ||
-            respos.status >= 300 ||
-            responseData?.success !== true) {
+        // helper: doc ของประวัติเติมเงิน ใช้ transRef เป็น doc id เพื่อกันสลิปซ้ำ
+        const topupDocRefOf = (ref) => firebase_1.db.collection("topup_history").doc(ref.replace(/\//g, "_"));
+        const slipOkPassed = respos.status >= 200 &&
+            respos.status < 300 &&
+            responseData?.success === true;
+        let data = null;
+        if (slipOkPassed) {
+            data = responseData?.data || responseData;
+        }
+        else if (errorCode === 1012 && responseData?.data?.transRef) {
+            // SlipOK บอกว่าสลิปเคยถูกตรวจแล้ว -> เช็คว่าระบบเราบันทึกเติมเงินไว้จริงหรือยัง
+            // ถ้ายังไม่มี แปลว่าครั้งก่อน SlipOK ผ่านแต่ transaction ของเราล้มเหลว
+            // ให้เติมเงินต่อแทนการปฏิเสธ (ผู้ใช้จะได้ไม่ติดสลิปซ้ำตลอดไป)
+            const recoverRef = String(responseData.data.transRef || "").trim();
+            const existing = await topupDocRefOf(recoverRef).get();
+            if (existing.exists) {
+                return res.status(400).json({
+                    ok: false,
+                    message: "สลิปนี้ถูกใช้แล้ว",
+                    slipok_code: 1012,
+                });
+            }
+            console.warn("SLIPOK DUPLICATE but not in topup_history, recovering:", recoverRef);
+            data = responseData.data;
+        }
+        if (!data) {
             // log ไว้ดูว่า SlipOK ตอบอะไรกลับมาจริง ๆ
             console.error("SLIPOK FAIL:", respos.status, JSON.stringify(responseData));
             let message = "สลิปไม่ผ่านการตรวจสอบ";
@@ -81,7 +104,6 @@ exports.router.post("/checkslip", upload.single("file"), async (req, res) => {
                 slipok_code: errorCode ?? null,
             });
         }
-        const data = responseData?.data || responseData;
         const amount = Number(data?.amount);
         const transRef = String(data?.transRef || "").trim();
         if (!amount || amount <= 0) {
@@ -91,9 +113,7 @@ exports.router.post("/checkslip", upload.single("file"), async (req, res) => {
             return res.status(400).json({ ok: false, message: "ไม่พบเลขอ้างอิงธุรกรรม" });
         }
         // ใช้ transRef เป็น doc id เพื่อกันสลิปซ้ำแบบ atomic ภายใน transaction
-        const docRef = firebase_1.db
-            .collection("topup_history")
-            .doc(transRef.replace(/\//g, "_"));
+        const docRef = topupDocRefOf(transRef);
         const topupData = {
             topup_id: docRef.id,
             customer_id: customerRef,
@@ -175,7 +195,11 @@ exports.router.post("/checkslip", upload.single("file"), async (req, res) => {
     catch (e) {
         console.error("SERVER ERROR:", e);
         if (e?.message === "DUPLICATE_SLIP") {
-            return res.status(400).json({ ok: false, message: "สลิปนี้ถูกใช้แล้ว" });
+            return res.status(400).json({
+                ok: false,
+                message: "สลิปนี้ถูกใช้แล้ว",
+                slipok_code: 1012,
+            });
         }
         if (e?.message === "CUSTOMER_NOT_FOUND") {
             return res.status(404).json({ ok: false, message: "ไม่พบลูกค้า" });
