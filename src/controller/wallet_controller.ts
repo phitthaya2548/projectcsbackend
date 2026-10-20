@@ -16,51 +16,43 @@ router.post("/checkslip", upload.single("file"), async (req, res) => {
     const file = req.file;
 
     if (!file) {
-      return res.status(400).json({
+      return res.status(400).json({ ok: false, message: "แนบไฟล์สลิป" });
+    }
+
+    // ต้องใช้ multer.memoryStorage() เท่านั้น ไม่งั้น file.buffer จะเป็น undefined
+    if (!file.buffer) {
+      return res.status(500).json({
         ok: false,
-        message: "แนบไฟล์สลิป",
+        message: "upload ต้องใช้ multer.memoryStorage()",
       });
     }
 
     const customerId = String(req.body.customer_id || "").trim();
-
     if (!customerId) {
-      return res.status(400).json({
-        ok: false,
-        message: "กรุณาระบุ customer_id",
-      });
+      return res.status(400).json({ ok: false, message: "กรุณาระบุ customer_id" });
     }
 
     const customerRef = db.collection("customers").doc(customerId);
     const customerSnap = await customerRef.get();
-
     if (!customerSnap.exists) {
-      return res.status(404).json({
-        ok: false,
-        message: "ไม่พบลูกค้า",
-      });
+      return res.status(404).json({ ok: false, message: "ไม่พบลูกค้า" });
     }
 
     const slipokId = process.env.SLIPOK_ID;
     const xauth = process.env.SLIPOK_XAUTH;
-
     if (!slipokId || !xauth) {
-      return res.status(500).json({
-        ok: false,
-        message: "missing SLIPOK env",
-      });
+      return res.status(500).json({ ok: false, message: "missing SLIPOK env" });
     }
 
     const url = `https://api.slipok.com/api/line/apikey/${slipokId}`;
 
+    // ต้อง import FormData จาก "form-data" (ไม่ใช่ FormData ของ Node/เบราว์เซอร์)
     const form = new FormData();
-
-form.append("files", file.buffer, {
-  filename: file.originalname || "slip.jpg",
-  contentType: file.mimetype || "image/jpeg",
-});
-
-form.append("log", "true");
+    form.append("files", file.buffer, {
+      filename: file.originalname || "slip.jpg",
+      contentType: file.mimetype || "image/jpeg",
+    });
+    form.append("log", "true");
 
     const respos = await axios.post(url, form, {
       headers: {
@@ -72,61 +64,49 @@ form.append("log", "true");
     });
 
     const responseData = respos.data;
-      const errorCode = responseData?.code;
+    const errorCode = responseData?.code;
 
-      if (
-        respos.status < 200 ||
-        respos.status >= 300 ||
-        responseData?.success !== true
-      ) {
-        let message = "สลิปไม่ผ่านการตรวจสอบ";
+    if (
+      respos.status < 200 ||
+      respos.status >= 300 ||
+      responseData?.success !== true
+    ) {
+      // log ไว้ดูว่า SlipOK ตอบอะไรกลับมาจริง ๆ
+      console.error("SLIPOK FAIL:", respos.status, JSON.stringify(responseData));
 
-        if (errorCode === 1014) {
-          message = "บัญชีผู้รับไม่ตรงบัญชีระบบ";
-        } else if (errorCode === 1012) {
-          message = "สลิปนี้ถูกใช้แล้ว";
-        } else if (errorCode === 1013) {
-          message = "จำนวนเงินในสลิปไม่ถูกต้อง";
-        }
-
-        return res.status(400).json({
-          ok: false,
-          message,
-        });
+      let message = "สลิปไม่ผ่านการตรวจสอบ";
+      if (errorCode === 1014) {
+        message = "บัญชีผู้รับไม่ตรงบัญชีระบบ";
+      } else if (errorCode === 1012) {
+        message = "สลิปนี้ถูกใช้แล้ว";
+      } else if (errorCode === 1013) {
+        message = "จำนวนเงินในสลิปไม่ถูกต้อง";
+      } else if (responseData?.message) {
+        message = `สลิปไม่ผ่านการตรวจสอบ: ${responseData.message}`;
       }
 
-    const data = respos.data?.data || respos.data;
+      return res.status(400).json({
+        ok: false,
+        message,
+        slipok_code: errorCode ?? null,
+      });
+    }
+
+    const data = responseData?.data || responseData;
     const amount = Number(data?.amount);
     const transRef = String(data?.transRef || "").trim();
 
     if (!amount || amount <= 0) {
-      return res.status(400).json({
-        ok: false,
-        message: "ไม่พบจำนวนเงินในสลิป",
-      });
+      return res.status(400).json({ ok: false, message: "ไม่พบจำนวนเงินในสลิป" });
     }
-
     if (!transRef) {
-      return res.status(400).json({
-        ok: false,
-        message: "ไม่พบเลขอ้างอิงธุรกรรม",
-      });
+      return res.status(400).json({ ok: false, message: "ไม่พบเลขอ้างอิงธุรกรรม" });
     }
 
-    const duplicateSnap = await db
+    // ใช้ transRef เป็น doc id เพื่อกันสลิปซ้ำแบบ atomic ภายใน transaction
+    const docRef = db
       .collection("topup_history")
-      .where("trans_ref", "==", transRef)
-      .limit(1)
-      .get();
-
-    if (!duplicateSnap.empty) {
-      return res.status(400).json({
-        ok: false,
-        message: "สลิปนี้ถูกใช้แล้ว",
-      });
-    }
-
-    const docRef = db.collection("topup_history").doc();
+      .doc(transRef.replace(/\//g, "_"));
 
     const topupData: TopupHistory = {
       topup_id: docRef.id,
@@ -136,12 +116,15 @@ form.append("log", "true");
       topup_datetime: Timestamp.now(),
     };
 
-
     let walletBalanceAfter = 0;
     const paidOrderIds: string[] = [];
 
     await db.runTransaction(async (tx) => {
-
+      // ---------- READS (ต้องอ่านทั้งหมดก่อนเขียน) ----------
+      const dupDoc = await tx.get(docRef);
+      if (dupDoc.exists) {
+        throw new Error("DUPLICATE_SLIP");
+      }
 
       const customerDoc = await tx.get(customerRef);
       if (!customerDoc.exists) {
@@ -149,63 +132,64 @@ form.append("log", "true");
       }
       const currentBalance = Number(customerDoc.data()?.wallet_balance || 0);
 
+      // ไม่ใช้ orderBy เพื่อไม่ต้องสร้าง composite index
+      // (where customer_id + where status + orderBy order_datetime จะ error
+      //  FAILED_PRECONDITION ถ้ายังไม่ได้สร้าง index -> เป็น 500 server error)
       const pendingOrdersSnap = await tx.get(
         db
           .collection("orders")
           .where("customer_id", "==", customerRef)
           .where("status", "==", "waiting_payment")
-          .orderBy("order_datetime", "asc")
       );
 
+      const pendingDocs = [...pendingOrdersSnap.docs].sort((a, b) => {
+        const ta = a.data().order_datetime?.toMillis?.() ?? 0;
+        const tb = b.data().order_datetime?.toMillis?.() ?? 0;
+        return ta - tb;
+      });
 
-
+      // ---------- คำนวณ ----------
       let runningBalance = currentBalance + amount;
+      const toPay: { ref: FirebaseFirestore.DocumentReference; storeRef: any; amountDue: number }[] = [];
 
-      for (const orderDoc of pendingOrdersSnap.docs) {
-  const orderData = orderDoc.data() as Order;
-  const storeRef = orderData.store_id;
+      for (const orderDoc of pendingDocs) {
+        const orderData = orderDoc.data() as Order;
 
-  const servicePrice = Number(orderData.service_price || 0);
-  const deliveryPrice = Number(orderData.delivery_price || 0);
-  const detergentPrice = Number(orderData.detergent_price || 0);
+        const amountDue =
+          Number(orderData.service_price || 0) +
+          Number(orderData.delivery_price || 0) +
+          Number(orderData.detergent_price || 0);
 
-  const amountDue =
-    servicePrice +
-    deliveryPrice +
-    detergentPrice;
+        if (amountDue > 0 && runningBalance >= amountDue) {
+          let storeRef: any = orderData.store_id;
 
-  if (amountDue > 0 && runningBalance >= amountDue) {
-    if (!storeRef) {
-      throw new Error("STORE_NOT_FOUND");
-    }
+          // กรณีเก็บ store_id เป็น string แทน DocumentReference
+          if (typeof storeRef === "string") {
+            storeRef = db.collection("stores").doc(storeRef);
+          }
+          if (!storeRef) {
+            throw new Error("STORE_NOT_FOUND");
+          }
 
-    runningBalance -= amountDue;
-    paidOrderIds.push(orderDoc.id);
-
-    tx.update(orderDoc.ref, {
-      status: "payment_completed",
-    });
-
-    tx.update(storeRef, {
-      wallet_balance: FieldValue.increment(amountDue),
-    });
-  } else {
-    break;
-  }
-}
+          runningBalance -= amountDue;
+          paidOrderIds.push(orderDoc.id);
+          toPay.push({ ref: orderDoc.ref, storeRef, amountDue });
+        } else {
+          break;
+        }
+      }
 
       walletBalanceAfter = runningBalance;
 
+      // ---------- WRITES ----------
       tx.set(docRef, topupData);
 
-      tx.update(customerRef, {
-        wallet_balance: runningBalance,
-      });
+      tx.update(customerRef, { wallet_balance: runningBalance });
 
-
-      for (const orderId of paidOrderIds) {
-        tx.update(db.collection("orders").doc(orderId), {
-          status: "payment_completed",
+      for (const p of toPay) {
+        tx.update(p.ref, { status: "payment_completed" });
+        tx.update(p.storeRef, {
+          wallet_balance: FieldValue.increment(p.amountDue),
         });
       }
     });
@@ -221,6 +205,16 @@ form.append("log", "true");
     });
   } catch (e: any) {
     console.error("SERVER ERROR:", e);
+
+    if (e?.message === "DUPLICATE_SLIP") {
+      return res.status(400).json({ ok: false, message: "สลิปนี้ถูกใช้แล้ว" });
+    }
+    if (e?.message === "CUSTOMER_NOT_FOUND") {
+      return res.status(404).json({ ok: false, message: "ไม่พบลูกค้า" });
+    }
+    if (e?.message === "STORE_NOT_FOUND") {
+      return res.status(500).json({ ok: false, message: "ไม่พบร้านค้าของออเดอร์" });
+    }
 
     return res.status(500).json({
       ok: false,
