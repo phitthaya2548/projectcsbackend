@@ -71,27 +71,34 @@ form.append("log", "true");
       validateStatus: () => true,
     });
 
-    const responseData = respos.data;
-      const errorCode = responseData?.code;
+  const responseData = respos.data;
+const errorCode = Number(responseData?.code);
 
-      if (
-        respos.status < 200 ||
-        respos.status >= 300 ||
-        responseData?.success !== true
-      ) {
-        let message = "สลิปไม่ผ่านการตรวจสอบ";
+if (
+  respos.status < 200 ||
+  respos.status >= 300 ||
+  responseData?.success !== true
+) {
+  console.log("status:", respos.status);
+  console.log("response:", JSON.stringify(responseData, null, 2));
 
-        if (errorCode === 1014) {
-          message = "บัญชีผู้รับไม่ตรงบัญชีระบบ";
-        } 
-        console.log("status:", respos.status);
-console.log("response:", JSON.stringify(responseData, null, 2));
-        return res.status(400).json({
-          ok: false,
-          message,
-        });
-      }
+  const messages: Record<number, string> = {
+    1007: "ไม่พบ QR code ในสลิป กรุณาอัปโหลดรูปสลิปเต็มใบและชัดเจน",
+    1010: "สลิปเพิ่งโอน กรุณารอสักครู่แล้วลองใหม่",
+    1011: "ไม่พบรายการโอนนี้ในระบบธนาคาร หรือ QR หมดอายุ กรุณาใช้สลิปที่เพิ่งโอนจริง",
+    1012: "สลิปนี้ถูกใช้แล้ว",
+    1014: "บัญชีผู้รับไม่ตรงบัญชีระบบ",
+  };
 
+  return res.status(400).json({
+    ok: false,
+    code: errorCode || undefined,
+    message:
+      messages[errorCode] ||
+      responseData?.message ||
+      "สลิปไม่ผ่านการตรวจสอบ",
+  });
+}
     const data = respos.data?.data || respos.data;
     const amount = Number(data?.amount);
     const transRef = String(data?.transRef || "").trim();
